@@ -1,247 +1,322 @@
-const WebSocket = require('ws');
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
+const WebSocket = require('ws');
 
-// Создаём HTTP сервер для раздачи статических файлов
-const server = http.createServer((req, res) => {
-    let filePath = path.join(__dirname, 'public', req.url === '/' ? 'index.html' : req.url);
-    
-    const extname = path.extname(filePath);
-    let contentType = 'text/html';
-    
-    switch (extname) {
-        case '.js':
-            contentType = 'text/javascript';
-            break;
-        case '.css':
-            contentType = 'text/css';
-            break;
-        case '.json':
-            contentType = 'application/json';
-            break;
-        case '.png':
-            contentType = 'image/png';
-            break;
-        case '.jpg':
-            contentType = 'image/jpg';
-            break;
+const PORT = 3100;
+
+// Static file server
+const server = http.createServer(function(req, res) {
+  var filePath = path.join(__dirname, 'public', req.url === '/' ? 'index.html' : req.url);
+  var extname = path.extname(filePath);
+  var contentType = 'text/html';
+
+  switch (extname) {
+    case '.js':
+      contentType = 'text/javascript';
+      break;
+    case '.css':
+      contentType = 'text/css';
+      break;
+    case '.json':
+      contentType = 'application/json';
+      break;
+    case '.png':
+      contentType = 'image/png';
+      break;
+    case '.jpg':
+      contentType = 'image/jpg';
+      break;
+  }
+
+  fs.readFile(filePath, function(error, content) {
+    if (error) {
+      if (error.code === 'ENOENT') {
+        res.writeHead(404);
+        res.end('File not found');
+      } else {
+        res.writeHead(500);
+        res.end('Server error');
+      }
+    } else {
+      res.writeHead(200, { 'Content-Type': contentType });
+      res.end(content);
     }
-    
-    fs.readFile(filePath, (error, content) => {
-        if (error) {
-            if (error.code === 'ENOENT') {
-                res.writeHead(404);
-                res.end('File not found');
-            } else {
-                res.writeHead(500);
-                res.end('Server error');
-            }
-        } else {
-            res.writeHead(200, { 'Content-Type': contentType });
-            res.end(content);
-        }
-    });
+  });
 });
 
-// WebSocket сервер
-const wss = new WebSocket.Server({ server });
+const wss = new WebSocket.Server({ server: server });
 
-let players = [];
-let gameState = {
+var players = []; // { id, name, ws, alive, hand[] }
+var game = {
   started: false,
-  deck: [],
   currentRoundCard: null,
-  currentPlayerIndex: 0,
-  players: []
+  currentPlayerId: null,
+  deck: [],
+  pile: [], // last played cards (actual values)
+  lastPlay: null // { playerId, claimedCount, cards[] }
 };
 
-const CARD_VALUES = ['A', 'K', 'Q'];
-const DECK_CONFIG = { A: 6, K: 6, Q: 6, JOKER: 2 };
+var CARD_VALUES = ['A', 'K', 'Q'];
+var DECK_CONFIG = { A: 6, K: 6, Q: 6, JOKER: 2 };
 
 function createDeck() {
-  let deck = [];
-  for (let i = 0; i < DECK_CONFIG.A; i++) deck.push('A');
-  for (let i = 0; i < DECK_CONFIG.K; i++) deck.push('K');
-  for (let i = 0; i < DECK_CONFIG.Q; i++) deck.push('Q');
-  for (let i = 0; i < DECK_CONFIG.JOKER; i++) deck.push('JOKER');
+  var deck = [];
+  for (var i = 0; i < DECK_CONFIG.A; i++) deck.push('A');
+  for (var j = 0; j < DECK_CONFIG.K; j++) deck.push('K');
+  for (var k = 0; k < DECK_CONFIG.Q; k++) deck.push('Q');
+  for (var m = 0; m < DECK_CONFIG.JOKER; m++) deck.push('JOKER');
   return shuffle(deck);
 }
 
 function shuffle(array) {
-  for (let i = array.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [array[i], array[j]] = [array[j], array[i]];
+  for (var i = array.length - 1; i > 0; i--) {
+    var j = Math.floor(Math.random() * (i + 1));
+    var tmp = array[i];
+    array[i] = array[j];
+    array[j] = tmp;
   }
   return array;
 }
 
-function startGame() {
-  console.log('=== НАЧАЛО ИГРЫ ===');
-  console.log('Игроков за столом:', players.length);
-  
-  if (players.length < 2) {
-    console.log('Недостаточно игроков! Нужно минимум 2');
-    return false;
+function nextAlivePlayerId(fromPlayerId) {
+  if (players.length === 0) return null;
+  var startIdx = indexById(fromPlayerId);
+  if (startIdx === -1) startIdx = 0;
+  for (var i = 1; i <= players.length; i++) {
+    var idx = (startIdx + i) % players.length;
+    if (players[idx].alive) return players[idx].id;
   }
-  
-  const deck = createDeck();
-  const playerHands = {};
-  
-  players.forEach(function(p) { 
-    playerHands[p.id] = deck.splice(0, 5);
-    console.log(p.name + ' получил карты');
-  });
-  
-  gameState = {
-    started: true,
-    deck: deck,
-    currentRoundCard: CARD_VALUES[Math.floor(Math.random() * CARD_VALUES.length)],
-    currentPlayerIndex: 0,
-    players: players.map(function(p) { 
-      return { 
-        id: p.id, 
-        name: p.name, 
-        hand: playerHands[p.id], 
-        bulletChamber: null, 
-        alive: true 
-      };
-    })
-  };
-  
-  console.log('Карта раунда:', gameState.currentRoundCard);
-  console.log('Порядок ходов:', gameState.players.map(function(p) { return p.name; }));
-  
-  broadcastGameState();
+  return null;
+}
+
+function indexById(id) {
+  for (var i = 0; i < players.length; i++) {
+    if (players[i].id === id) return i;
+  }
+  return -1;
+}
+
+function alivePlayersCount() {
+  var count = 0;
+  for (var i = 0; i < players.length; i++) if (players[i].alive) count++;
+  return count;
+}
+
+function dealHands() {
+  var deck = createDeck();
+  for (var i = 0; i < players.length; i++) {
+    players[i].hand = deck.splice(0, 5);
+  }
+  game.deck = deck;
+}
+
+function startGame() {
+  if (players.length < 2) return false;
+  for (var i = 0; i < players.length; i++) players[i].alive = true;
+  dealHands();
+  game.started = true;
+  game.currentRoundCard = CARD_VALUES[Math.floor(Math.random() * CARD_VALUES.length)];
+  game.currentPlayerId = players[0].id;
+  game.pile = [];
+  game.lastPlay = null;
+  broadcastState();
   return true;
 }
 
-function broadcastGameState() {
-  var stateForClients = {
-    started: gameState.started,
-    deck: gameState.deck ? gameState.deck.length : 0,
-    currentRoundCard: gameState.currentRoundCard,
-    currentPlayerIndex: gameState.currentPlayerIndex,
-    players: gameState.players.map(function(p) { 
-      return { 
-        id: p.id, 
-        name: p.name, 
-        hand: p.hand ? p.hand.length : 0,
-        alive: p.alive 
-      };
-    })
-  };
-  
-  players.forEach(function(p) {
-    var playerData = null;
-    for (var i = 0; i < gameState.players.length; i++) {
-      if (gameState.players[i].id === p.id) {
-        playerData = gameState.players[i];
-        break;
-      }
-    }
-    var privateState = JSON.parse(JSON.stringify(stateForClients));
-    privateState.myHand = playerData && playerData.hand ? playerData.hand : [];
-    if (p.ws.readyState === WebSocket.OPEN) {
-      p.ws.send(JSON.stringify({ type: 'gameState', data: privateState }));
-    }
-  });
+function startNextRound(startFromPlayerId) {
+  game.currentRoundCard = CARD_VALUES[Math.floor(Math.random() * CARD_VALUES.length)];
+  game.pile = [];
+  game.lastPlay = null;
+  game.currentPlayerId = startFromPlayerId || nextAlivePlayerId(game.currentPlayerId);
+  broadcastState();
 }
 
-function broadcastPlayersList() {
-  var playerList = players.map(function(p) { return { id: p.id, name: p.name }; });
-  players.forEach(function(p) {
-    if (p.ws.readyState === WebSocket.OPEN) {
-      p.ws.send(JSON.stringify({ type: 'playersList', data: playerList }));
+function removeCardsFromHand(player, cardIndexes) {
+  // Sort indexes desc to remove safely
+  cardIndexes.sort(function(a, b) { return b - a; });
+  var removed = [];
+  for (var i = 0; i < cardIndexes.length; i++) {
+    var idx = cardIndexes[i];
+    if (idx >= 0 && idx < player.hand.length) {
+      removed.push(player.hand.splice(idx, 1)[0]);
     }
-  });
+  }
+  return removed;
+}
+
+function isTruthful(cards, claimedCard) {
+  for (var i = 0; i < cards.length; i++) {
+    var c = cards[i];
+    if (c !== claimedCard && c !== 'JOKER') return false;
+  }
+  return true;
+}
+
+function rouletteLoss(player) {
+  // one bullet in 6 chambers
+  var hit = Math.random() < (1 / 6);
+  if (hit) {
+    player.alive = false;
+  }
+  return hit;
+}
+
+function endGameIfNeeded() {
+  if (alivePlayersCount() <= 1) {
+    game.started = false;
+    broadcastState();
+    return true;
+  }
+  return false;
+}
+
+function broadcast(type, data) {
+  var payload = JSON.stringify({ type: type, data: data });
+  for (var i = 0; i < players.length; i++) {
+    if (players[i].ws.readyState === WebSocket.OPEN) {
+      players[i].ws.send(payload);
+    }
+  }
+}
+
+function buildPublicState() {
+  return {
+    started: game.started,
+    currentRoundCard: game.currentRoundCard,
+    currentPlayerId: game.currentPlayerId,
+    pileCount: game.pile.length,
+    lastPlay: game.lastPlay ? { playerId: game.lastPlay.playerId, claimedCount: game.lastPlay.claimedCount } : null,
+    players: players.map(function(p) {
+      return { id: p.id, name: p.name, alive: p.alive, handCount: p.hand.length };
+    })
+  };
+}
+
+function broadcastState() {
+  var publicState = buildPublicState();
+  for (var i = 0; i < players.length; i++) {
+    var p = players[i];
+    var personal = JSON.parse(JSON.stringify(publicState));
+    personal.myHand = p.hand.slice();
+    if (p.ws.readyState === WebSocket.OPEN) {
+      p.ws.send(JSON.stringify({ type: 'gameState', data: personal }));
+    }
+  }
+}
+
+function sendPlayersList() {
+  var list = players.map(function(p) { return { id: p.id, name: p.name, alive: p.alive }; });
+  broadcast('playersList', list);
 }
 
 wss.on('connection', function(ws) {
   var playerId = Math.random().toString(36).substr(2, 8);
-  var playerName = 'Игрок ' + (players.length + 1);
-  
-  players.push({ id: playerId, ws: ws, name: playerName });
-  
-  console.log('✅ ' + playerName + ' (' + playerId + ') подключился');
-  console.log('Всего игроков:', players.length);
-  
-  ws.send(JSON.stringify({ 
-    type: 'init', 
-    data: { 
-      id: playerId, 
-      players: players.map(function(p) { return { id: p.id, name: p.name }; })
-    } 
-  }));
-  
-  broadcastPlayersList();
-  
+  var playerName = '����� ' + (players.length + 1);
+
+  var player = { id: playerId, name: playerName, ws: ws, alive: true, hand: [] };
+  players.push(player);
+
+  ws.send(JSON.stringify({ type: 'init', data: { id: playerId } }));
+  sendPlayersList();
+  broadcastState();
+
   ws.on('message', function(message) {
+    var parsed;
     try {
-      var parsed = JSON.parse(message);
-      var type = parsed.type;
-      var data = parsed.data;
-      console.log('📨 Получено: ' + type + ' от ' + playerId);
-      
-      if (type === 'setName') {
-        for (var i = 0; i < players.length; i++) {
-          if (players[i].id === playerId) {
-            players[i].name = data.name;
-            break;
-          }
-        }
-        console.log('📝 Игрок сменил имя на ' + data.name);
-        broadcastPlayersList();
-      } 
-      else if (type === 'startGame') {
-        console.log('🎮 Запрос на начало игры от ' + playerId);
-        startGame();
-      } 
-      else if (type === 'playCards') {
-        if (gameState.started) {
-          gameState.currentPlayerIndex = (gameState.currentPlayerIndex + 1) % gameState.players.length;
-          console.log('🎴 Ход перешёл к ' + gameState.players[gameState.currentPlayerIndex].name);
-          broadcastGameState();
-        }
-      } 
-      else if (type === 'challenge') {
-        if (gameState.started) {
-          console.log('🔍 Игрок ' + playerId + ' оспорил предыдущего');
-          broadcastGameState();
-        }
-      }
+      parsed = JSON.parse(message);
     } catch (e) {
-      console.error('Ошибка:', e);
+      return;
+    }
+
+    var type = parsed.type;
+    var data = parsed.data || {};
+
+    if (type === 'setName') {
+      if (typeof data.name === 'string' && data.name.trim()) {
+        player.name = data.name.trim().slice(0, 20);
+        sendPlayersList();
+        broadcastState();
+      }
+      return;
+    }
+
+    if (type === 'startGame') {
+      if (!game.started) {
+        startGame();
+      }
+      return;
+    }
+
+    if (!game.started) return;
+
+    if (type === 'playCards') {
+      if (game.currentPlayerId !== player.id) return;
+      if (!Array.isArray(data.cardIndexes) || data.cardIndexes.length === 0) return;
+
+      // remove from hand and record play
+      var removed = removeCardsFromHand(player, data.cardIndexes);
+      if (removed.length === 0) return;
+
+      game.pile = game.pile.concat(removed);
+      game.lastPlay = {
+        playerId: player.id,
+        claimedCount: removed.length,
+        cards: removed
+      };
+
+      // next player's turn
+      game.currentPlayerId = nextAlivePlayerId(player.id);
+      broadcastState();
+      return;
+    }
+
+    if (type === 'challenge') {
+      if (!game.lastPlay) return;
+      // only next player (current turn) can challenge
+      if (game.currentPlayerId !== player.id) return;
+
+      var liarId = game.lastPlay.playerId;
+      var liar = players[indexById(liarId)];
+      var truthful = isTruthful(game.lastPlay.cards, game.currentRoundCard);
+      var loser = truthful ? player : liar;
+      var hit = rouletteLoss(loser);
+
+      broadcast('challengeResult', {
+        truthful: truthful,
+        liarId: liarId,
+        challengerId: player.id,
+        loserId: loser.id,
+        hit: hit
+      });
+
+      if (endGameIfNeeded()) return;
+
+      // start next round from loser (if alive) or next alive
+      var nextId = loser.alive ? loser.id : nextAlivePlayerId(loser.id);
+      startNextRound(nextId);
+      return;
     }
   });
-  
+
   ws.on('close', function() {
-    var disconnectedPlayer = null;
-    for (var i = 0; i < players.length; i++) {
-      if (players[i].id === playerId) {
-        disconnectedPlayer = players[i];
-        players.splice(i, 1);
-        break;
-      }
+    var idx = indexById(player.id);
+    if (idx !== -1) players.splice(idx, 1);
+
+    if (game.started && alivePlayersCount() <= 1) {
+      game.started = false;
     }
-    if (disconnectedPlayer) {
-      console.log('❌ ' + disconnectedPlayer.name + ' отключился');
+
+    if (game.currentPlayerId === player.id) {
+      game.currentPlayerId = nextAlivePlayerId(player.id);
     }
-    
-    if (gameState.started) {
-      gameState.started = false;
-      console.log('🛑 Игра остановлена');
-    }
-    
-    broadcastPlayersList();
-    console.log('Осталось игроков:', players.length);
+
+    sendPlayersList();
+    broadcastState();
   });
 });
 
-// Запуск сервера
-var PORT = 3100;
 server.listen(PORT, '0.0.0.0', function() {
-  console.log('🚀 Сервер запущен на http://0.0.0.0:' + PORT);
-  console.log('📡 WebSocket: ws://0.0.0.0:' + PORT);
-  console.log('Ожидание подключения игроков...');
+  console.log('������ ������� �� http://0.0.0.0:' + PORT);
+  console.log('WebSocket: ws://0.0.0.0:' + PORT);
 });

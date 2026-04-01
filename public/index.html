@@ -1,24 +1,42 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="ru">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>РљРѕР»РѕРґР° Р›Р¶РµС†Р° вЂ” Liar's Bar</title>
-    <link rel="stylesheet" href="style.css">
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Колода лжецов</title>
+  <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-    <div id="login">
-        <h1>рџђЌ РљРћР›РћР”Рђ Р›Р–Р•Р¦Рђ</h1>
-        <h2>Liar's Bar</h2>
-        <input type="text" id="playerName" placeholder="Р’РІРµРґРёС‚Рµ РІР°С€Рµ РёРјСЏ" autocomplete="off">
-        <button id="joinBtn">рџЋІ Р’РѕР№С‚Рё Р·Р° СЃС‚РѕР»</button>
-    </div>
-    <div id="game" style="display: none;">
-        <div id="players"></div>
-        <div id="gameInfo"></div>
-        <div id="myHand"></div>
-        <div id="actions"></div>
-    </div>
-    <script src="client.js"></script>
+  <div class="page">
+    <header class="hero">
+      <div class="hero__title">Колода лжецов</div>
+      <div class="hero__subtitle">Блеф, вызов и одна пуля в барабане</div>
+    </header>
+
+    <section id="login" class="card">
+      <div class="section-title">Вход</div>
+      <div class="row">
+        <input id="playerName" class="input" placeholder="Ваше имя" maxlength="20" />
+        <button id="joinBtn" class="btn primary">Войти</button>
+      </div>
+      <div class="hint">Подключитесь и дождитесь второго игрока, затем нажмите “Начать игру”.</div>
+    </section>
+
+    <section id="game" class="card" style="display:none;">
+      <div class="grid">
+        <div class="panel">
+          <div id="gameInfo" class="info"></div>
+          <div id="actions" class="actions"></div>
+          <div id="log" class="log"></div>
+        </div>
+        <div class="panel">
+          <div id="players" class="players"></div>
+          <div id="myHand" class="hand"></div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <script src="client.js"></script>
 </body>
 </html>
