@@ -161,7 +161,7 @@ wss.on('connection', (ws) => {
           console.log(`🔍 Игрок ${playerId} оспорил предыдущего`);
           // Здесь будет логика проверки блефа
           broadcastGameState();const WebSocket = require('ws');
-const wss = new WebSocket.Server({ port: 8080 });
+const wss = new WebSocket.Server({ port: 3100 });
 
 let players = [];
 let gameState = {
@@ -348,7 +348,7 @@ wss.on('connection', (ws) => {
   });
 });
 
-console.log('🚀 Сервер запущен на ws://localhost:8080');
+console.log('🚀 Сервер запущен на ws://localhost:3100');
 console.log('Ожидание подключения игроков...');
         }
       }
@@ -375,5 +375,5 @@ console.log('Ожидание подключения игроков...');
   });
 });
 
-console.log('🚀 Сервер запущен на ws://localhost:8080');
+console.log('🚀 Сервер запущен на ws://localhost:3100');
 console.log('Ожидание подключения игроков...');
