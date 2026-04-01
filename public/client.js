@@ -56,12 +56,23 @@ function handleJoin() {
     if (msg.type === 'gameState') {
       gameState = msg.data;
       renderGame();
+      renderPlayers([]);
     }
 
     if (msg.type === 'challengeResult') {
-      var text = msg.data.truthful ? 'Блеф раскрыт: правду говорил игрок.' : 'Блеф раскрыт: ложь!';
-      text += msg.data.hit ? ' ВЫСТРЕЛ. Игрок вылетел.' : ' Пусто. Игрок жив.';
+      var loserName = findPlayerName(msg.data.loserId);
+      var liarName = findPlayerName(msg.data.liarId);
+      var challengerName = findPlayerName(msg.data.challengerId);
+      var text = msg.data.truthful
+        ? ('Правда! ' + challengerName + ' ошибся.')
+        : ('Ложь! ' + liarName + ' пойман.');
+      text += msg.data.hit ? (' Выстрел. ' + loserName + ' погиб.') : (' Пусто. ' + loserName + ' жив.');
       logLine(text);
+    }
+
+    if (msg.type === 'roundEnd') {
+      var w = findPlayerName(msg.data.winnerId);
+      logLine('Раунд завершен. Победил: ' + (w || '...'));
     }
   };
 
@@ -107,7 +118,8 @@ function renderGame() {
     '<div>Раунд: <b>' + roundCard + '</b></div>' +
     '<div>Ход игрока: <b>' + findPlayerName(gameState.currentPlayerId) + '</b></div>' +
     '<div>Карт в сбросе: <b>' + (gameState.pileCount || 0) + '</b></div>' +
-    (gameState.lastPlay ? '<div>Последняя ставка: <b>' + gameState.lastPlay.claimedCount + '</b> карт</div>' : '');
+    (gameState.lastPlay ? '<div>Последняя ставка: <b>' + gameState.lastPlay.claimedCount + '</b> карт</div>' : '') +
+    (gameState.lastPlay ? '<div>Выложил: <b>' + findPlayerName(gameState.lastPlay.playerId) + '</b> — ' + cardsToLabel(gameState.lastPlay.cards) + '</div>' : '');
 
   renderHand();
 
@@ -115,7 +127,7 @@ function renderGame() {
   if (isMyTurn) {
     actions.innerHTML += '<button class="btn primary" id="playBtn">Сыграть (' + selectedIndexes.length + ')</button>';
     if (gameState.lastPlay) {
-      actions.innerHTML += '<button class="btn" id="challengeBtn">Оспорить</button>';
+      actions.innerHTML += '<button class="btn danger" id="challengeBtn">Оспорить</button>';
     }
 
     var playBtn = document.getElementById('playBtn');
@@ -176,16 +188,44 @@ function cardLabel(card) {
   return card;
 }
 
+function cardsToLabel(cards) {
+  if (!cards || !cards.length) return '-';
+  var labels = [];
+  for (var i = 0; i < cards.length; i++) labels.push(cardLabel(cards[i]));
+  return labels.join(', ');
+}
+
+function shotsBar(spent) {
+  var total = 6;
+  var s = '';
+  for (var i = 0; i < total; i++) {
+    s += i < spent ? 'X' : '-';
+  }
+  return '[' + s + ']';
+}
+
 function renderPlayers(list) {
   var container = document.getElementById('players');
   if (!container) return;
   container.innerHTML = '<div class="section-title">Игроки</div>';
 
-  for (var i = 0; i < list.length; i++) {
-    var p = list[i];
+  var useList = (gameState && gameState.players && gameState.players.length) ? gameState.players : (list || []);
+
+  for (var i = 0; i < useList.length; i++) {
+    var p = useList[i];
     var row = document.createElement('div');
     row.className = 'player-row' + (p.alive ? '' : ' dead');
-    row.textContent = p.name + (p.id === playerId ? ' (вы)' : '');
+
+    var left = document.createElement('div');
+    left.className = 'player-name';
+    left.textContent = p.name + (p.id === playerId ? ' (вы)' : '');
+
+    var right = document.createElement('div');
+    right.className = 'player-meta';
+    right.textContent = 'Выстрелы: ' + shotsBar(p.bulletsSpent || 0) + ' · Победы: ' + (p.wins || 0);
+
+    row.appendChild(left);
+    row.appendChild(right);
     container.appendChild(row);
   }
 }
