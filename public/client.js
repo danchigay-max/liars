@@ -14,7 +14,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 function handleJoin() {
     const nameInput = document.getElementById('playerName');
-    const name = nameInput?.value?.trim() || `Игрок_${Math.floor(Math.random() * 1000)}`;
+    const name = nameInput && nameInput.value && nameInput.value.trim() || `Игрок_${Math.floor(Math.random() * 1000)}`;
     
     // Динамический WebSocket URL — работает на localhost и на сервере
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -50,8 +50,8 @@ function handleJoin() {
             
             switch (msg.type) {
                 case 'init':
-                    playerId = msg.data?.id;
-                    if (msg.data?.players) updatePlayersList(msg.data.players);
+                    playerId = msg.data && msg.data.id;
+                    if (msg.data && msg.data.players) updatePlayersList(msg.data.players);
                     break;
                 case 'gameState':
                     gameState = msg.data;
@@ -61,8 +61,8 @@ function handleJoin() {
                     updatePlayersList(msg.data);
                     break;
                 case 'error':
-                    console.warn('⚠️', msg.data?.message);
-                    if (msg.data?.message) alert('⚠️ ' + msg.data.message);
+                    console.warn('⚠️', msg.data && msg.data.message);
+                    if (msg.data && msg.data.message) alert('⚠️ ' + msg.data.message);
                     break;
             }
         } catch (e) {
@@ -96,7 +96,7 @@ function renderGame() {
     if (!gameState.started) {
         gameInfo.innerHTML = `
             <h3>🎲 Ожидание игроков...</h3>
-            <p>За столом: <strong>${gameState.players?.length || 0}</strong></p>
+            <p>За столом: <strong>${(gameState.players && gameState.players.length) || 0}</strong></p>
             <p style="color:#ffd966">Нужно минимум 2 игрока</p>
             <button id="startGameBtn" style="
                 background:#4caf50;color:white;font-size:20px;
@@ -108,7 +108,7 @@ function renderGame() {
         const btn = document.getElementById('startGameBtn');
         if (btn) {
             btn.onclick = () => {
-                if (ws?.readyState === WebSocket.OPEN) {
+                if (ws && ws.readyState === WebSocket.OPEN) {
                     ws.send(JSON.stringify({ type: 'startGame', data: {} }));
                 } else {
                     alert('Нет соединения с сервером!');
@@ -122,16 +122,16 @@ function renderGame() {
     }
     
     // === Активная игра ===
-    const currentPlayer = gameState.players?.[gameState.currentPlayerIndex];
-    const isMyTurn = currentPlayer?.id === playerId;
+    const currentPlayer = (gameState.players && gameState.players[gameState.currentPlayerIndex]) || null;
+    const isMyTurn = currentPlayer && currentPlayer.id === playerId;
     
     gameInfo.innerHTML = `
         <h3>🎲 Раунд: <span style="color:#ffd966">${gameState.currentRoundCard || '???'}</span></h3>
-        <p>🔫 Ход: <strong>${currentPlayer?.name || '...'}</strong> ${isMyTurn ? '✅ <span style="color:#4caf50">(ВЫ)</span>' : ''}</p>
-        <p>📦 Карт в колоде: <strong>${gameState.deck?.length || 0}</strong></p>`;
+        <p>🔫 Ход: <strong>${(currentPlayer && currentPlayer.name) || '...'}</strong> ${isMyTurn ? '✅ <span style="color:#4caf50">(ВЫ)</span>' : ''}</p>
+        <p>📦 Карт в колоде: <strong>${(gameState.deck && gameState.deck.length) || 0}</strong></p>`;
     
     // === Рука игрока ===
-    if (gameState.myHand?.length > 0) {
+    if ((gameState.myHand && gameState.myHand.length) > 0) {
         myHand.innerHTML = `<h4>📖 Ваши карты (${gameState.myHand.length})</h4>`;
         gameState.myHand.forEach((card, idx) => {
             const el = document.createElement('div');
@@ -170,7 +170,7 @@ function renderGame() {
         
         document.getElementById('playBtn').onclick = () => {
             if (selectedCards.length === 0) return alert('Выберите карту!');
-            ws?.send(JSON.stringify({ 
+            ws && ws.send(JSON.stringify({ 
                 type: 'playCards', 
                 data: { cardCount: selectedCards.length, isBluff: false } 
             }));
@@ -179,7 +179,7 @@ function renderGame() {
         };
         
         document.getElementById('passBtn').onclick = () => {
-            ws?.send(JSON.stringify({ type: 'playCards', data: { cardCount: 0 } }));
+            ws && ws.send(JSON.stringify({ type: 'playCards', data: { cardCount: 0 } }));
         };
     } else {
         actions.innerHTML = `
@@ -187,11 +187,11 @@ function renderGame() {
                 padding:12px 25px;border:none;border-radius:20px;cursor:pointer;margin:5px">
                 🔍 ОСПОРИТЬ
             </button>
-            <p style="color:#ffaa66;margin-top:10px">⏳ Ждём ход ${currentPlayer?.name || '...'}</p>`;
+            <p style="color:#ffaa66;margin-top:10px">⏳ Ждём ход ${(currentPlayer && currentPlayer.name) || '...'}</p>`;
         
         document.getElementById('challengeBtn').onclick = () => {
             if (confirm('Оспорить предыдущего игрока?')) {
-                ws?.send(JSON.stringify({ type: 'challenge', data: {} }));
+                ws && ws.send(JSON.stringify({ type: 'challenge', data: {} }));
             }
         };
     }
@@ -209,7 +209,7 @@ function updatePlayersList(players) {
     
     container.innerHTML = '<h3>🎭 За столом:</h3>';
     
-    if (!players?.length) {
+    if (!players || !players.length) {
         container.innerHTML += '<p style="color:#888">Пока никого...</p>';
         return;
     }
@@ -228,7 +228,7 @@ function updatePlayersList(players) {
 
 // Корректное закрытие при уходе со страницы
 window.addEventListener('beforeunload', () => {
-    if (ws?.readyState === WebSocket.OPEN) {
+    if (ws && ws.readyState === WebSocket.OPEN) {
         ws.close(1000, 'Page unload');
     }
 });
