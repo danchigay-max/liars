@@ -15,6 +15,8 @@ var chatBubbles = {};
 var lastReveal = null;
 var deckPreviewVisible = false;
 var deckPreviewTimer = null;
+var lastPileCount = 0;
+var autoToggleUpdating = false;
 
 function logLine(text) {
   var el = document.getElementById('log');
@@ -60,6 +62,7 @@ document.addEventListener('DOMContentLoaded', function() {
   if (layoutToggle) {
     layoutToggle.onclick = function() {
       tableMode = !tableMode;
+      document.body.classList.toggle('table-mode', tableMode);
       renderPlayers([]);
     };
   }
@@ -67,7 +70,11 @@ document.addEventListener('DOMContentLoaded', function() {
   var autoToggle = document.getElementById('autoNextToggle');
   if (autoToggle) {
     autoToggle.onchange = function() {
+      if (autoToggleUpdating) return;
       autoNext = !!autoToggle.checked;
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: 'setAutoNext', data: { enabled: autoNext } }));
+      }
       scheduleAutoNext();
     };
   }
@@ -109,8 +116,10 @@ function handleJoin() {
     ws.send(JSON.stringify({ type: 'setName', data: { name: name } }));
     var login = document.getElementById('login');
     var game = document.getElementById('game');
+    var chatToggle = document.getElementById('chatToggle');
     if (login) login.style.display = 'none';
     if (game) game.style.display = 'block';
+    if (chatToggle) chatToggle.classList.remove('hidden');
   };
 
   ws.onmessage = function(event) {
@@ -132,6 +141,13 @@ function handleJoin() {
     if (msg.type === 'gameState') {
       gameState = msg.data;
       handleDealAnimation();
+      if (typeof gameState.autoNextEnabled !== 'undefined') {
+        autoToggleUpdating = true;
+        autoNext = !!gameState.autoNextEnabled;
+        var autoToggle = document.getElementById('autoNextToggle');
+        if (autoToggle) autoToggle.checked = autoNext;
+        autoToggleUpdating = false;
+      }
       renderGame();
       renderPlayers([]);
       if (gameState.suspenseUntil) suspenseUntil = gameState.suspenseUntil;
@@ -171,7 +187,7 @@ function handleDealAnimation() {
     deckPreviewTimer = setTimeout(function() {
       deckPreviewVisible = false;
       renderPlayers([]);
-    }, 900);
+    }, 2200);
 
     if (dealTimer) clearInterval(dealTimer);
     dealTimer = setInterval(function() {
@@ -183,7 +199,7 @@ function handleDealAnimation() {
         clearInterval(dealTimer);
         dealTimer = null;
       }
-    }, gameState.dealIntervalMs || 300);
+    }, gameState.dealIntervalMs || 250);
   }
 }
 
@@ -354,7 +370,8 @@ function renderHand() {
   for (var i = 0; i < showCount; i++) {
     var card = gameState.myHand[i];
     var el = document.createElement('div');
-    el.className = 'card-tile' + (selectedIndexes.indexOf(i) >= 0 ? ' selected' : '');
+    var dealClass = gameState.dealing ? ' deal-in' : '';
+    el.className = 'card-tile' + (selectedIndexes.indexOf(i) >= 0 ? ' selected' : '') + dealClass;
     el.innerHTML = cardInner(card);
     (function(idx) {
       el.onclick = function() {
@@ -399,12 +416,7 @@ function tableName(card) {
 }
 
 function shotsBar(spent) {
-  var total = 6;
-  var s = '';
-  for (var i = 0; i < total; i++) {
-    s += i < spent ? 'X' : '-';
-  }
-  return '[' + s + ']';
+  return '[' + spent + '/6]';
 }
 
 function renderPlayers(list) {
@@ -435,21 +447,21 @@ function renderPlayersList(container, list) {
 
     var left = document.createElement('div');
     left.className = 'player-name';
-    left.textContent = p.name + (p.id === playerId ? ' (вы)' : '');
+    left.textContent = p.name + ' ' + shotsBar(p.bulletsSpent || 0) + (p.id === playerId ? ' (вы)' : '');
 
     var bubble = renderBubble(p.id);
     if (bubble) left.appendChild(bubble);
 
     var right = document.createElement('div');
     right.className = 'player-meta';
-    right.textContent = 'Выстрелы: ' + shotsBar(p.bulletsSpent || 0) + ' | Победы: ' + (p.wins || 0);
+    right.textContent = 'Победы: ' + (p.wins || 0);
 
     var cards = document.createElement('div');
     cards.className = 'player-cards';
     var count = p.handCount || 0;
     for (var c = 0; c < count; c++) {
       var back = document.createElement('div');
-      back.className = 'card-back';
+      back.className = 'card-back deal-in';
       cards.appendChild(back);
     }
 
@@ -487,7 +499,7 @@ function renderTableLayout(container) {
     if (p) {
       var name = document.createElement('div');
       name.className = 'seat-name' + (p.id === playerId ? ' you' : '');
-      name.textContent = p.name;
+      name.textContent = p.name + ' ' + shotsBar(p.bulletsSpent || 0);
 
       var bubble = renderBubble(p.id);
       if (bubble) name.appendChild(bubble);
@@ -497,7 +509,7 @@ function renderTableLayout(container) {
       var count = p.handCount || 0;
       for (var c = 0; c < count; c++) {
         var back = document.createElement('div');
-        back.className = 'card-back';
+        back.className = 'card-back deal-in';
         cards.appendChild(back);
       }
 
@@ -530,22 +542,26 @@ function seatOrder(count) {
 
 function buildPileHtml() {
   var now = Date.now();
+  var out = '';
   if (lastReveal && lastReveal.until > now) {
-    var out = '';
     for (var i = 0; i < lastReveal.cards.length; i++) {
       out += '<div class="pile-card face">' + cardLabel(lastReveal.cards[i]) + '</div>';
     }
     return out;
   }
-  if (gameState && gameState.lastPlay) {
-    var count = gameState.lastPlay.claimedCount || 0;
-    var backs = '';
-    for (var j = 0; j < count; j++) {
-      backs += '<div class="pile-card"></div>';
+
+  var lastPlayView = gameState ? gameState.lastPlayView : null;
+  var count = lastPlayView ? (lastPlayView.actualCards ? lastPlayView.actualCards.length : lastPlayView.claimedCount) : 0;
+  for (var j = 0; j < count; j++) {
+    var isNew = j >= lastPileCount;
+    if (lastPlayView && lastPlayView.actualCards) {
+      out += '<div class="pile-card face' + (isNew ? ' new-card' : '') + '">' + cardLabel(lastPlayView.actualCards[j]) + '</div>';
+    } else {
+      out += '<div class="pile-card' + (isNew ? ' new-card' : '') + '"></div>';
     }
-    return backs;
   }
-  return '';
+  lastPileCount = count;
+  return out;
 }
 
 function buildDeckPreviewHtml() {
@@ -572,7 +588,7 @@ function renderBubble(playerIdForBubble) {
   var bubble = chatBubbles[playerIdForBubble];
   if (!bubble || bubble.expires <= now) return null;
   var el = document.createElement('div');
-  el.className = 'chat-bubble';
+  el.className = 'chat-bubble show';
   el.textContent = bubble.text;
   return el;
 }

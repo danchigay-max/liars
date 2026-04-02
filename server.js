@@ -59,11 +59,13 @@ var game = {
   lastPlay: null, // { playerId, claimedCount, cards[] }
   dealing: false,
   dealId: 0,
-  dealIntervalMs: 350,
+  dealIntervalMs: 220,
   dealTimer: null,
   suspenseUntil: 0,
   awaitingNextRound: false,
-  nextStartId: null
+  nextStartId: null,
+  autoNextEnabled: false,
+  autoNextTimer: null
 };
 
 var CARD_VALUES = ['A', 'K', 'Q'];
@@ -176,6 +178,10 @@ function startNextRound(startFromPlayerId) {
   }
   game.awaitingNextRound = false;
   game.nextStartId = null;
+  if (game.autoNextTimer) {
+    clearTimeout(game.autoNextTimer);
+    game.autoNextTimer = null;
+  }
   startDealing();
   game.started = true;
   game.currentRoundCard = CARD_VALUES[Math.floor(Math.random() * CARD_VALUES.length)];
@@ -213,6 +219,20 @@ function rouletteShot(player) {
   return hit;
 }
 
+function scheduleAutoNext() {
+  if (game.autoNextTimer) {
+    clearTimeout(game.autoNextTimer);
+    game.autoNextTimer = null;
+  }
+  if (game.autoNextEnabled && game.awaitingNextRound) {
+    game.autoNextTimer = setTimeout(function() {
+      if (game.awaitingNextRound) {
+        startNextRound(game.nextStartId || nextAlivePlayerId(game.currentPlayerId));
+      }
+    }, 5000);
+  }
+}
+
 function endGameIfNeeded() {
   if (alivePlayersCount() <= 1) {
     game.started = false;
@@ -230,6 +250,7 @@ function endGameIfNeeded() {
     game.nextStartId = winnerId || (players[0] && players[0].id);
     broadcast('roundEnd', { winnerId: winnerId });
     broadcastState();
+    scheduleAutoNext();
     return true;
   }
   return false;
@@ -257,6 +278,7 @@ function buildPublicState() {
     dealIntervalMs: game.dealIntervalMs,
     suspenseUntil: game.suspenseUntil,
     awaitingNextRound: game.awaitingNextRound,
+    autoNextEnabled: game.autoNextEnabled,
     lastPlay: game.lastPlay ? { playerId: game.lastPlay.playerId, claimedCount: game.lastPlay.claimedCount } : null,
     players: players.map(function(p) {
       var shownShots = p.bulletsSpent || 0;
@@ -337,6 +359,7 @@ function resolveChallenge(challengerId, isAuto) {
       game.awaitingNextRound = true;
       game.nextStartId = loser.alive ? loser.id : nextAlivePlayerId(loser.id);
       broadcastState();
+      scheduleAutoNext();
     } else {
       var nextStart = loser.alive ? loser.id : nextAlivePlayerId(loser.id);
       startNextRound(nextStart);
@@ -384,6 +407,13 @@ wss.on('connection', function(ws) {
           broadcast('chat', { playerId: player.id, name: player.name, text: text, ts: Date.now() });
         }
       }
+      return;
+    }
+
+    if (type === 'setAutoNext') {
+      game.autoNextEnabled = !!data.enabled;
+      broadcastState();
+      scheduleAutoNext();
       return;
     }
 

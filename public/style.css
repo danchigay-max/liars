@@ -92,6 +92,12 @@ body {
   background: var(--danger);
 }
 
+.btn[disabled] {
+  background: #3a3f49;
+  color: #7f8792;
+  cursor: not-allowed;
+}
+
 .grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -169,6 +175,11 @@ body {
   text-align: center;
   font-weight: 700;
   box-shadow: 0 6px 16px rgba(0,0,0,0.35);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.card-tile.deal-in {
+  animation: dealIn 0.25s ease;
 }
 
 .card-corner {
@@ -195,7 +206,7 @@ body {
 }
 
 .card-value.joker {
-  font-size: 16px;
+  font-size: 12px;
   letter-spacing: 1px;
 }
 
@@ -250,6 +261,10 @@ body {
   box-shadow: inset 0 0 0 1px rgba(255,255,255,0.05);
 }
 
+.card-back.deal-in {
+  animation: dealIn 0.25s ease;
+}
+
 .chat-bubble {
   display: inline-block;
   margin-left: 8px;
@@ -258,6 +273,14 @@ body {
   background: #2b3341;
   font-size: 12px;
   color: #e9e2d6;
+  opacity: 0;
+  transform: translateY(4px);
+  transition: opacity 0.25s ease, transform 0.25s ease;
+}
+
+.chat-bubble.show {
+  opacity: 1;
+  transform: translateY(0);
 }
 
 .log {
@@ -421,7 +444,7 @@ body {
 /* Table layout */
 .table-layout {
   position: relative;
-  height: 320px;
+  height: 420px;
   border: 1px dashed #2a3444;
   border-radius: 12px;
   margin-bottom: 12px;
@@ -443,11 +466,12 @@ body {
   gap: 6px;
   flex-wrap: wrap;
   justify-content: center;
+  min-height: 60px;
 }
 
 .pile-card {
-  width: 36px;
-  height: 52px;
+  width: 42px;
+  height: 60px;
   border-radius: 6px;
   background: linear-gradient(135deg, #233a5e, #0e1a2b);
   border: 1px solid #38527a;
@@ -462,10 +486,14 @@ body {
   font-weight: 700;
 }
 
+.pile-card.new-card {
+  animation: pileIn 0.25s ease;
+}
+
 .deck-preview {
   opacity: 0;
   transform: scale(0.9);
-  transition: opacity 0.2s ease, transform 0.2s ease;
+  transition: opacity 0.25s ease, transform 0.25s ease;
 }
 
 .deck-preview.show {
@@ -522,10 +550,33 @@ body {
   gap: 4px;
 }
 
+/* Table mode layout tweaks */
+body.table-mode .grid {
+  grid-template-columns: 1fr;
+}
+
+body.table-mode .info-panel {
+  padding: 12px;
+}
+
+body.table-mode .table-panel {
+  padding: 10px;
+}
+
+@keyframes dealIn {
+  from { transform: translateY(8px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+@keyframes pileIn {
+  from { transform: translateY(10px) scale(0.9); opacity: 0; }
+  to { transform: translateY(0) scale(1); opacity: 1; }
+}
+
 @media (max-width: 900px) {
   .grid { grid-template-columns: 1fr; }
   .card-tile { width: 80px; height: 118px; }
   .table-title { font-size: 22px; }
   .chat-toggle { top: 20%; }
-  .table-layout { height: 260px; }
+  .table-layout { height: 300px; }
 }

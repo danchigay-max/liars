@@ -7,7 +7,7 @@
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-  <button id="chatToggle" class="floating chat-toggle">Чат</button>
+  <button id="chatToggle" class="floating chat-toggle hidden">Чат</button>
   <button id="helpToggle" class="floating help-toggle">?</button>
 
   <div id="chatDrawer" class="chat-drawer">
@@ -53,7 +53,7 @@
         <button id="layoutToggle" class="btn">Вид стола</button>
       </div>
       <div class="grid">
-        <div class="panel">
+        <div class="panel info-panel">
           <div id="gameInfo" class="info"></div>
           <div id="actions" class="actions"></div>
           <div id="log" class="log"></div>
@@ -64,7 +64,7 @@
             </label>
           </div>
         </div>
-        <div class="panel">
+        <div class="panel table-panel">
           <div id="players" class="players"></div>
           <div id="tableLayout" class="table-layout hidden"></div>
           <div id="myHand" class="hand"></div>
