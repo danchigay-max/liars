@@ -22,6 +22,8 @@ var winnerBanner = null;
 var deckPreviewState = 'hidden'; // hidden | show | collapse
 var deckPreviewTimer = null;
 var lastPileCount = 0;
+var lastPlayAnimSig = '';
+var suspenseText = '';
 var autoToggleUpdating = false;
 var isThrowing = false;
 var currentTurnText = '';
@@ -194,6 +196,8 @@ function handleDealAnimation() {
     dealVisibleCount = 0;
     dealReady = false;
     clientDealing = true;
+    lastPlayAnimSig = '';
+    suspenseText = '';
     lastPileCount = 0;
     lastReveal = null;
     revealStatus = null;
@@ -245,6 +249,7 @@ function handleChallengeSuspense(data) {
   var delay = data.delayMs || 4000;
   var start = Date.now();
   suspenseUntil = start + delay;
+  suspenseText = '';
 
   // show reveal immediately
   if (data.cards) {
@@ -259,10 +264,13 @@ function handleChallengeSuspense(data) {
   suspenseTimer = setInterval(function() {
     var elapsed = Date.now() - start;
     var dots = Math.min(3, Math.floor(elapsed / 700) + 1);
-    logLine('Игрок ' + loserName + ' стреляет в себя' + new Array(dots + 1).join('.'));
+    suspenseText = 'Игрок ' + loserName + ' стреляет в себя' + new Array(dots + 1).join('.');
+    logLine(suspenseText);
+    renderPlayers([]);
     if (Date.now() >= suspenseUntil) {
       clearInterval(suspenseTimer);
       suspenseTimer = null;
+      suspenseText = '';
       var reveal = data.cards ? (' Карты: ' + cardsToLabel(data.cards)) : '';
       var text = base + reveal + (data.hit ? (' Выстрел. ' + loserName + ' погиб.') : (' Пусто. ' + loserName + ' жив.'));
       logLine(text);
@@ -289,30 +297,7 @@ function scheduleAutoNext() {
 }
 
 function animateThrow() {
-  if (isThrowing) return false;
-  var hand = document.getElementById('myHand');
-  if (!hand) return false;
-  var cards = hand.querySelectorAll('.card-tile');
-
-  var target = getPileCenter();
-  for (var i = 0; i < selectedIndexes.length; i++) {
-    var idx = selectedIndexes[i];
-    var card = cards[idx];
-    if (!card) continue;
-    var rect = card.getBoundingClientRect();
-    var cx = rect.left + rect.width / 2;
-    var cy = rect.top + rect.height / 2;
-    var dx = target.x - cx;
-    var dy = target.y - cy;
-    card.style.setProperty('--throw-x', dx + 'px');
-    card.style.setProperty('--throw-y', dy + 'px');
-    card.classList.remove('selected');
-    card.classList.add('throwing');
-  }
-
-  isThrowing = true;
-  setTimeout(function() { isThrowing = false; }, 380);
-  return true;
+  return false;
 }
 
 function getPileCenter() {
@@ -410,13 +395,11 @@ function renderGame() {
     if (playBtn) {
       playBtn.onclick = function() {
         if (!selectedIndexes.length) return alert('Выберите карты');
-        animateThrow();
-        setTimeout(function() {
-          if (ws && ws.readyState === WebSocket.OPEN) {
-            ws.send(JSON.stringify({ type: 'playCards', data: { cardIndexes: selectedIndexes } }));
-          }
-          selectedIndexes = [];
-        }, 320);
+        if (ws && ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ type: 'playCards', data: { cardIndexes: selectedIndexes } }));
+        }
+        selectedIndexes = [];
+        renderGame();
       };
     }
 
@@ -591,6 +574,12 @@ function renderTableLayout(container) {
   preview.className = 'deck-preview ' + deckPreviewState;
   preview.innerHTML = buildDeckPreviewHtml();
 
+  if (suspenseText && Date.now() < suspenseUntil) {
+    var wait = document.createElement('div');
+    wait.className = 'pile-wait';
+    wait.textContent = suspenseText;
+  }
+
   var pile = document.createElement('div');
   pile.className = 'pile';
   pile.innerHTML = buildPileHtml();
@@ -604,6 +593,7 @@ function renderTableLayout(container) {
   verdictEl.textContent = verdict ? verdict.text : '';
 
   center.appendChild(preview);
+  if (wait) center.appendChild(wait);
   center.appendChild(pile);
   if (caption.textContent) center.appendChild(caption);
   if (verdict) center.appendChild(verdictEl);
@@ -632,9 +622,12 @@ function renderTableLayout(container) {
       var cards = document.createElement('div');
       cards.className = 'seat-cards';
       var count = showSeatCards ? (p.handCount || 0) : 0;
+      if (clientDealing && dealReady) count = Math.min(count, dealVisibleCount);
       for (var c = 0; c < count; c++) {
         var back = document.createElement('div');
-        back.className = 'card-back deal-in';
+        var isNew = clientDealing && dealReady && c === count - 1;
+        back.className = 'card-back' + (isNew ? ' deal-in' : '');
+        if (isNew) back.setAttribute('data-deal', '1');
         cards.appendChild(back);
       }
 
@@ -649,11 +642,7 @@ function renderTableLayout(container) {
   }
 
   if (gameState && clientDealing && dealReady) {
-    var dealKey = 'deal-' + gameState.dealId;
-    if (container.getAttribute('data-deal') !== dealKey) {
-      container.setAttribute('data-deal', dealKey);
-      setTimeout(function() { applyDealFromCenter(container); }, 80);
-    }
+    setTimeout(function() { applyDealFromCenter(container); }, 40);
   }
 
   applyPileFromSeat(container);
@@ -692,7 +681,7 @@ function applyDealFromCenter(container) {
   var cx = crect.left + crect.width / 2;
   var cy = crect.top + crect.height / 2;
 
-  var cards = container.querySelectorAll('.seat .card-back');
+  var cards = container.querySelectorAll('.seat .card-back[data-deal="1"]');
   for (var i = 0; i < cards.length; i++) {
     var card = cards[i];
     var rect = card.getBoundingClientRect();
@@ -701,6 +690,7 @@ function applyDealFromCenter(container) {
     card.style.setProperty('--from-x', dx + 'px');
     card.style.setProperty('--from-y', dy + 'px');
     card.style.animationDelay = (i * 45) + 'ms';
+    card.removeAttribute('data-deal');
     card.classList.remove('deal-from-center');
     void card.offsetWidth;
     card.classList.add('deal-from-center');
@@ -710,6 +700,10 @@ function applyDealFromCenter(container) {
 function applyPileFromSeat(container) {
   var lastPlayView = gameState ? gameState.lastPlayView : null;
   if (!lastPlayView) return;
+  if (lastReveal && lastReveal.until > Date.now()) return;
+  var sig = lastPlayView.playerId + ':' + (lastPlayView.actualCards ? lastPlayView.actualCards.length : lastPlayView.claimedCount);
+  if (sig === lastPlayAnimSig) return;
+  lastPlayAnimSig = sig;
   var seat = container.querySelector('.seat[data-player-id="' + lastPlayView.playerId + '"]');
   var pile = container.querySelector('.pile');
   if (!seat || !pile) return;
@@ -756,12 +750,13 @@ function buildPileHtml() {
   var out = '';
   if (lastReveal && lastReveal.until > now) {
     for (var i = 0; i < lastReveal.cards.length; i++) {
-      out += buildFlipCard(lastReveal.cards[i], true, true);
+      out += buildFlipCard(lastReveal.cards[i], true, false);
     }
     return out;
   }
 
   var lastPlayView = gameState ? gameState.lastPlayView : null;
+  if (!lastPlayView) lastPlayAnimSig = '';
   var count = lastPlayView ? (lastPlayView.actualCards ? lastPlayView.actualCards.length : lastPlayView.claimedCount) : 0;
   for (var j = 0; j < count; j++) {
     var isNew = j >= lastPileCount;

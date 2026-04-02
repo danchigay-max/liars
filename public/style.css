@@ -309,7 +309,7 @@ body {
 }
 
 .card-back.deal-from-center {
-  animation: dealFromCenter 0.6s ease forwards;
+  animation: dealFromCenter 0.7s ease forwards;
 }
 
 .chat-bubble {
@@ -592,6 +592,15 @@ body.table-mode .log { display: none; }
   margin-top: 6px;
   font-size: 12px;
   color: var(--muted);
+}
+
+.pile-wait {
+  margin-bottom: 6px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #f0d9a6;
+  letter-spacing: 0.5px;
+  text-shadow: 0 2px 6px rgba(0,0,0,0.35);
 }
 
 .pile-verdict {
