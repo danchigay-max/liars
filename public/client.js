@@ -1,4 +1,5 @@
 ﻿// client.js
+
 var ws = null;
 var playerId = null;
 var gameState = null;
