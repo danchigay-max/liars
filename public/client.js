@@ -182,6 +182,7 @@ function handleDealAnimation() {
   if (dealIdSeen !== gameState.dealId) {
     dealIdSeen = gameState.dealId;
     dealVisibleCount = 0;
+    lastPileCount = 0;
 
     deckPreviewVisible = true;
     if (deckPreviewTimer) clearTimeout(deckPreviewTimer);
@@ -257,15 +258,40 @@ function animateThrow() {
   var hand = document.getElementById('myHand');
   if (!hand) return false;
   var cards = hand.querySelectorAll('.card-tile');
+
+  var target = getPileCenter();
   for (var i = 0; i < selectedIndexes.length; i++) {
     var idx = selectedIndexes[i];
-    if (cards[idx]) cards[idx].classList.add('throwing');
+    var card = cards[idx];
+    if (!card) continue;
+    var rect = card.getBoundingClientRect();
+    var cx = rect.left + rect.width / 2;
+    var cy = rect.top + rect.height / 2;
+    var dx = target.x - cx;
+    var dy = target.y - cy;
+    card.style.setProperty('--throw-x', dx + 'px');
+    card.style.setProperty('--throw-y', dy + 'px');
+    card.classList.remove('selected');
+    card.classList.add('throwing');
   }
+
   isThrowing = true;
-  setTimeout(function() {
-    isThrowing = false;
-  }, 260);
+  setTimeout(function() { isThrowing = false; }, 320);
   return true;
+}
+
+function getPileCenter() {
+  var pile = document.querySelector('.pile');
+  if (pile) {
+    var rect = pile.getBoundingClientRect();
+    return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+  }
+  var info = document.getElementById('gameInfo');
+  if (info) {
+    var r = info.getBoundingClientRect();
+    return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+  }
+  return { x: window.innerWidth / 2, y: window.innerHeight / 2 };
 }
 
 function renderGame() {
@@ -349,7 +375,7 @@ function renderGame() {
             ws.send(JSON.stringify({ type: 'playCards', data: { cardIndexes: selectedIndexes } }));
           }
           selectedIndexes = [];
-        }, 240);
+        }, 280);
       };
     }
 
@@ -497,6 +523,11 @@ function renderPlayersList(container, list) {
 function renderTableLayout(container) {
   container.innerHTML = '';
 
+  var title = document.createElement('div');
+  title.className = 'table-title in-table';
+  title.textContent = tableName(gameState ? gameState.currentRoundCard : '');
+  container.appendChild(title);
+
   var center = document.createElement('div');
   center.className = 'table-center';
 
@@ -539,6 +570,36 @@ function renderTableLayout(container) {
       seat.appendChild(cards);
     }
     container.appendChild(seat);
+  }
+
+  if (gameState && gameState.dealing) {
+    var dealKey = 'deal-' + gameState.dealId;
+    if (container.getAttribute('data-deal') !== dealKey) {
+      container.setAttribute('data-deal', dealKey);
+      setTimeout(function() { applyDealFromCenter(container); }, 40);
+    }
+  }
+}
+
+function applyDealFromCenter(container) {
+  var center = container.querySelector('.table-center');
+  if (!center) return;
+  var crect = center.getBoundingClientRect();
+  var cx = crect.left + crect.width / 2;
+  var cy = crect.top + crect.height / 2;
+
+  var cards = container.querySelectorAll('.seat .card-back');
+  for (var i = 0; i < cards.length; i++) {
+    var card = cards[i];
+    var rect = card.getBoundingClientRect();
+    var dx = cx - (rect.left + rect.width / 2);
+    var dy = cy - (rect.top + rect.height / 2);
+    card.style.setProperty('--from-x', dx + 'px');
+    card.style.setProperty('--from-y', dy + 'px');
+    card.style.animationDelay = (i * 40) + 'ms';
+    card.classList.remove('deal-from-center');
+    void card.offsetWidth;
+    card.classList.add('deal-from-center');
   }
 }
 

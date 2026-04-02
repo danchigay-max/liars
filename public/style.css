@@ -125,6 +125,16 @@ body {
   color: #ffe9b0;
 }
 
+.table-title.in-table {
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 22px;
+  z-index: 3;
+  pointer-events: none;
+}
+
 .turn-banner {
   font-size: 22px;
   font-weight: 800;
@@ -183,7 +193,7 @@ body {
 }
 
 .card-tile.throwing {
-  animation: throwToPile 0.28s ease;
+  animation: throwToPile 0.32s ease forwards;
 }
 
 .card-corner {
@@ -267,6 +277,10 @@ body {
 
 .card-back.deal-in {
   animation: dealIn 0.25s ease;
+}
+
+.card-back.deal-from-center {
+  animation: dealFromCenter 0.45s ease forwards;
 }
 
 .chat-bubble {
@@ -491,13 +505,12 @@ body {
 }
 
 .pile-card.new-card {
-  animation: pileIn 0.25s ease;
+  animation: pileIn 0.3s ease;
 }
 
 .deck-preview {
   opacity: 0;
-  transform: scale(0.9);
-  transition: opacity 0.25s ease, transform 0.25s ease;
+  transition: opacity 0.25s ease;
   position: absolute;
   top: 50%;
   left: 50%;
@@ -558,11 +571,6 @@ body {
   gap: 4px;
 }
 
-.seat-top .card-back.deal-in { animation: dealTop 0.25s ease; }
-.seat-bottom .card-back.deal-in { animation: dealBottom 0.25s ease; }
-.seat-left .card-back.deal-in { animation: dealLeft 0.25s ease; }
-.seat-right .card-back.deal-in { animation: dealRight 0.25s ease; }
-
 /* Table mode layout tweaks */
 body.table-mode .grid {
   grid-template-columns: 1fr;
@@ -587,34 +595,19 @@ body.table-mode .table-panel {
   to { transform: translateY(0); opacity: 1; }
 }
 
-@keyframes dealTop {
-  from { transform: translateY(18px) scale(0.9); opacity: 0; }
-  to { transform: translateY(0) scale(1); opacity: 1; }
-}
-
-@keyframes dealBottom {
-  from { transform: translateY(-18px) scale(0.9); opacity: 0; }
-  to { transform: translateY(0) scale(1); opacity: 1; }
-}
-
-@keyframes dealLeft {
-  from { transform: translateX(18px) scale(0.9); opacity: 0; }
-  to { transform: translateX(0) scale(1); opacity: 1; }
-}
-
-@keyframes dealRight {
-  from { transform: translateX(-18px) scale(0.9); opacity: 0; }
-  to { transform: translateX(0) scale(1); opacity: 1; }
+@keyframes dealFromCenter {
+  from { transform: translate(var(--from-x), var(--from-y)) scale(0.5); opacity: 0; }
+  to { transform: translate(0, 0) scale(1); opacity: 1; }
 }
 
 @keyframes pileIn {
-  from { transform: translateY(10px) scale(0.9); opacity: 0; }
+  from { transform: translateY(14px) scale(0.8); opacity: 0; }
   to { transform: translateY(0) scale(1); opacity: 1; }
 }
 
 @keyframes throwToPile {
-  from { transform: translateY(0) scale(1); opacity: 1; }
-  to { transform: translateY(-30px) scale(0.9); opacity: 0.6; }
+  from { transform: translate(0, 0) scale(1); opacity: 1; }
+  to { transform: translate(var(--throw-x), var(--throw-y)) scale(0.7); opacity: 0.15; }
 }
 
 @media (max-width: 900px) {
