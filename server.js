@@ -1,4 +1,4 @@
-const http = require('http');
+п»їconst http = require('http');
 const fs = require('fs');
 const path = require('path');
 const WebSocket = require('ws');
@@ -110,7 +110,7 @@ function alivePlayersCount() {
 
 function initRevolver(player) {
   player.shotsInChamber = 0;
-  player.chamber = 1 + Math.floor(Math.random() * 6); // гарантированно 1 из 6
+  player.chamber = 1 + Math.floor(Math.random() * 6); // guaranteed 1 of 6
 }
 
 function dealHands() {
@@ -317,7 +317,7 @@ function resolveChallenge(challengerId, isAuto) {
 
 wss.on('connection', function(ws) {
   var playerId = Math.random().toString(36).substr(2, 8);
-  var playerName = 'Игрок ' + (players.length + 1);
+  var playerName = 'РРіСЂРѕРє ' + (players.length + 1);
 
   var player = { id: playerId, name: playerName, ws: ws, alive: true, hand: [], bulletsSpent: 0, wins: 0, chamber: 0, shotsInChamber: 0 };
   initRevolver(player);
@@ -408,6 +408,6 @@ wss.on('connection', function(ws) {
 });
 
 server.listen(PORT, '0.0.0.0', function() {
-  console.log('Сервер запущен на http://0.0.0.0:' + PORT);
+  console.log('РЎРµСЂРІРµСЂ Р·Р°РїСѓС‰РµРЅ РЅР° http://0.0.0.0:' + PORT);
   console.log('WebSocket: ws://0.0.0.0:' + PORT);
 });
