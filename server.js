@@ -59,7 +59,10 @@ var game = {
   dealId: 0,
   dealIntervalMs: 350,
   dealTimer: null,
-  suspenseUntil: 0
+  suspenseUntil: 0,
+  pendingDeathId: null,
+  awaitingNextRound: false,
+  nextRoundTimer: null
 };
 
 var CARD_VALUES = ['A', 'K', 'Q'];
@@ -151,11 +154,18 @@ function startGame() {
   game.pile = [];
   game.lastPlay = null;
   game.suspenseUntil = 0;
+  game.pendingDeathId = null;
+  game.awaitingNextRound = false;
   broadcastState();
   return true;
 }
 
 function startNextRound(startFromPlayerId) {
+  game.awaitingNextRound = false;
+  if (game.nextRoundTimer) {
+    clearTimeout(game.nextRoundTimer);
+    game.nextRoundTimer = null;
+  }
   startDealing();
   game.currentRoundCard = CARD_VALUES[Math.floor(Math.random() * CARD_VALUES.length)];
   game.pile = [];
@@ -188,9 +198,6 @@ function rouletteLoss(player) {
   player.bulletsSpent = (player.bulletsSpent || 0) + 1;
   player.shotsInChamber = (player.shotsInChamber || 0) + 1;
   var hit = player.shotsInChamber >= player.chamber;
-  if (hit) {
-    player.alive = false;
-  }
   return hit;
 }
 
@@ -218,6 +225,8 @@ function endGameIfNeeded() {
     game.pile = [];
     game.lastPlay = null;
     game.suspenseUntil = 0;
+    game.pendingDeathId = null;
+    game.awaitingNextRound = false;
     broadcastState();
     return true;
   }
@@ -243,6 +252,7 @@ function buildPublicState() {
     dealId: game.dealId,
     dealIntervalMs: game.dealIntervalMs,
     suspenseUntil: game.suspenseUntil,
+    awaitingNextRound: game.awaitingNextRound,
     lastPlay: game.lastPlay ? { playerId: game.lastPlay.playerId, claimedCount: game.lastPlay.claimedCount } : null,
     players: players.map(function(p) {
       return { id: p.id, name: p.name, alive: p.alive, handCount: p.hand.length, bulletsSpent: p.bulletsSpent || 0, wins: p.wins || 0 };
@@ -308,10 +318,28 @@ function resolveChallenge(challengerId, isAuto) {
   broadcastState();
 
   setTimeout(function() {
+    if (hit) {
+      loser.alive = false;
+      game.pendingDeathId = loser.id;
+    }
+
     if (endGameIfNeeded()) return;
-    var nextStart = loser.alive ? loser.id : nextAlivePlayerId(loser.id);
+
     game.suspenseUntil = 0;
-    startNextRound(nextStart);
+
+    if (hit) {
+      game.awaitingNextRound = true;
+      broadcastState();
+      if (game.nextRoundTimer) clearTimeout(game.nextRoundTimer);
+      game.nextRoundTimer = setTimeout(function() {
+        if (game.awaitingNextRound) {
+          startNextRound(loser.alive ? loser.id : nextAlivePlayerId(loser.id));
+        }
+      }, 5000);
+    } else {
+      var nextStart = loser.alive ? loser.id : nextAlivePlayerId(loser.id);
+      startNextRound(nextStart);
+    }
   }, delayMs);
 }
 
@@ -354,9 +382,17 @@ wss.on('connection', function(ws) {
       return;
     }
 
+    if (type === 'startNextRound') {
+      if (game.awaitingNextRound) {
+        startNextRound(nextAlivePlayerId(game.currentPlayerId));
+      }
+      return;
+    }
+
     if (!game.started) return;
     if (game.dealing) return;
     if (game.suspenseUntil && Date.now() < game.suspenseUntil) return;
+    if (game.awaitingNextRound) return;
     if (!player.alive) return;
 
     if (type === 'playCards') {

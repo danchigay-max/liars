@@ -110,6 +110,15 @@ body {
   line-height: 1.5;
 }
 
+.table-title {
+  text-align: center;
+  font-size: 28px;
+  font-weight: 900;
+  letter-spacing: 2px;
+  margin-bottom: 8px;
+  color: #ffe9b0;
+}
+
 .turn-banner {
   font-size: 22px;
   font-weight: 800;
@@ -149,8 +158,9 @@ body {
 }
 
 .card-tile {
-  width: 90px;
-  height: 130px;
+  position: relative;
+  width: 92px;
+  height: 136px;
   border-radius: 12px;
   border: 2px solid #f2f2f2;
   background: linear-gradient(180deg, #ffffff, #e9eef4);
@@ -159,19 +169,42 @@ body {
   text-align: center;
   font-weight: 700;
   box-shadow: 0 6px 16px rgba(0,0,0,0.35);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
 }
 
-.card-value {
-  font-size: 28px;
+.card-corner {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  font-size: 18px;
+}
+
+.card-corner.bottom {
+  top: auto;
+  left: auto;
+  right: 8px;
+  bottom: 8px;
+  transform: rotate(180deg);
 }
 
 .card-suit {
-  font-size: 24px;
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 32px;
+}
+
+.card-value.joker {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 18px;
+  letter-spacing: 1px;
+}
+
+.red {
+  color: #c0392b;
 }
 
 .card-tile.selected {
@@ -187,11 +220,10 @@ body {
 .player-row {
   padding: 8px 10px;
   border-radius: 10px;
-  margin-bottom: 6px;
+  margin-bottom: 10px;
   border: 1px solid #263244;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
+  display: grid;
+  grid-template-columns: 1fr;
   gap: 8px;
 }
 
@@ -201,9 +233,28 @@ body {
   color: #ffb1b1;
 }
 
+.player-name {
+  font-weight: 700;
+}
+
 .player-meta {
   color: var(--muted);
   font-size: 13px;
+}
+
+.player-cards {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.card-back {
+  width: 22px;
+  height: 32px;
+  border-radius: 4px;
+  background: linear-gradient(135deg, #233a5e, #0e1a2b);
+  border: 1px solid #38527a;
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,0.05);
 }
 
 .log {
@@ -223,5 +274,6 @@ body {
 
 @media (max-width: 900px) {
   .grid { grid-template-columns: 1fr; }
-  .card-tile { width: 82px; height: 120px; }
+  .card-tile { width: 80px; height: 118px; }
+  .table-title { font-size: 22px; }
 }

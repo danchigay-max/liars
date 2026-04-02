@@ -123,7 +123,8 @@ function handleChallengeSuspense(data) {
     if (Date.now() >= suspenseUntil) {
       clearInterval(suspenseTimer);
       suspenseTimer = null;
-      var text = base + (data.hit ? (' Выстрел. ' + loserName + ' погиб.') : (' Пусто. ' + loserName + ' жив.'));
+      var reveal = data.cards ? (' Карты: ' + cardsToLabel(data.cards)) : '';
+      var text = base + reveal + (data.hit ? (' Выстрел. ' + loserName + ' погиб.') : (' Пусто. ' + loserName + ' жив.'));
       logLine(text);
       renderGame();
     }
@@ -165,6 +166,7 @@ function renderGame() {
   var dealing = !!gameState.dealing;
   var suspense = Date.now() < suspenseUntil;
 
+  var tableTitle = tableName(roundCard);
   var turnText = isMyTurn ? 'ВАШ ХОД' : ('ХОД ИГРОКА: ' + findPlayerName(gameState.currentPlayerId));
   var bannerClass = isMyTurn ? 'turn-banner your-turn' : 'turn-banner';
 
@@ -179,9 +181,10 @@ function renderGame() {
   }
 
   info.innerHTML = '' +
+    '<div class="table-title">' + tableTitle + '</div>' +
     '<div class="' + bannerClass + '">' + turnText + '</div>' +
     (dealing ? '<div class="deal-banner">Раздача карт...</div>' : '') +
-    '<div>Раунд: <b>' + roundCard + '</b></div>' +
+    (gameState.awaitingNextRound ? '<div class="deal-banner">Ожидание новой раздачи...</div>' : '') +
     '<div>Карт в сбросе: <b>' + (gameState.pileCount || 0) + '</b></div>' +
     (gameState.lastPlay ? '<div>Последняя ставка: <b>' + gameState.lastPlay.claimedCount + '</b> карт</div>' : '') +
     lastLine;
@@ -191,6 +194,19 @@ function renderGame() {
   actions.innerHTML = '';
   if (dealing || suspense) {
     actions.innerHTML = '<div class="hint">Ожидание...</div>';
+    return;
+  }
+
+  if (gameState.awaitingNextRound) {
+    actions.innerHTML = '<button class="btn primary" id="nextRoundBtn">Новая раздача</button>';
+    var nr = document.getElementById('nextRoundBtn');
+    if (nr) {
+      nr.onclick = function() {
+        if (ws && ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ type: 'startNextRound', data: {} }));
+        }
+      };
+    }
     return;
   }
 
@@ -243,7 +259,7 @@ function renderHand() {
     el.innerHTML = cardInner(card);
     (function(idx) {
       el.onclick = function() {
-        if (gameState.dealing) return;
+        if (gameState.dealing || gameState.awaitingNextRound) return;
         var pos = selectedIndexes.indexOf(idx);
         if (pos >= 0) selectedIndexes.splice(pos, 1);
         else selectedIndexes.push(idx);
@@ -256,12 +272,13 @@ function renderHand() {
 
 function cardInner(card) {
   if (card === 'JOKER') {
-    return '<div class="card-value">JOKER</div>';
+    return '<div class="card-value joker">JOKER</div>';
   }
-  var suit = 'S';
-  if (card === 'K') suit = 'H';
-  if (card === 'Q') suit = 'D';
-  return '<div class="card-value">' + card + '</div><div class="card-suit">' + suit + '</div>';
+  var suit = '♠';
+  var cls = '';
+  if (card === 'K') { suit = '♥'; cls = 'red'; }
+  if (card === 'Q') { suit = '♦'; cls = 'red'; }
+  return '<div class="card-corner ' + cls + '">' + card + '</div><div class="card-suit ' + cls + '">' + suit + '</div><div class="card-corner bottom ' + cls + '">' + card + '</div>';
 }
 
 function cardLabel(card) {
@@ -277,6 +294,13 @@ function cardsToLabel(cards) {
   var labels = [];
   for (var i = 0; i < cards.length; i++) labels.push(cardLabel(cards[i]));
   return labels.join(', ');
+}
+
+function tableName(card) {
+  if (card === 'A') return 'СТОЛ ТУЗОВ';
+  if (card === 'K') return 'СТОЛ КОРОЛЕЙ';
+  if (card === 'Q') return 'СТОЛ ДАМ';
+  return 'СТОЛ';
 }
 
 function shotsBar(spent) {
@@ -308,8 +332,18 @@ function renderPlayers(list) {
     right.className = 'player-meta';
     right.textContent = 'Выстрелы: ' + shotsBar(p.bulletsSpent || 0) + ' | Победы: ' + (p.wins || 0);
 
+    var cards = document.createElement('div');
+    cards.className = 'player-cards';
+    var count = p.handCount || 0;
+    for (var c = 0; c < count; c++) {
+      var back = document.createElement('div');
+      back.className = 'card-back';
+      cards.appendChild(back);
+    }
+
     row.appendChild(left);
     row.appendChild(right);
+    row.appendChild(cards);
     container.appendChild(row);
   }
 }
