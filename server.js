@@ -1,4 +1,4 @@
-const http = require('http');
+п»їconst http = require('http');
 const fs = require('fs');
 const path = require('path');
 const WebSocket = require('ws');
@@ -242,7 +242,7 @@ function sendPlayersList() {
 
 wss.on('connection', function(ws) {
   var playerId = Math.random().toString(36).substr(2, 8);
-  var playerName = 'Игрок ' + (players.length + 1);
+  var playerName = 'РРіСЂРѕРє ' + (players.length + 1);
 
   var player = { id: playerId, name: playerName, ws: ws, alive: true, hand: [], bulletsSpent: 0, wins: 0 };
   players.push(player);
@@ -348,6 +348,7 @@ wss.on('connection', function(ws) {
 });
 
 server.listen(PORT, '0.0.0.0', function() {
-  console.log('Сервер запущен на http://0.0.0.0:' + PORT);
+  console.log('РЎРµСЂРІРµСЂ Р·Р°РїСѓС‰РµРЅ РЅР° http://0.0.0.0:' + PORT);
   console.log('WebSocket: ws://0.0.0.0:' + PORT);
 });
+
