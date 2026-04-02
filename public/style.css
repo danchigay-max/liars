@@ -1,11 +1,10 @@
-﻿* { box-sizing: border-box; }
+* { box-sizing: border-box; }
 
 :root {
   --bg: #0b0f14;
   --panel: #151b22;
   --panel-2: #1b2430;
   --text: #f4f1e8;
-  
   --muted: #a2a7b0;
   --accent: #f7c14b;
   --danger: #e25b5b;
@@ -111,6 +110,29 @@ body {
   line-height: 1.5;
 }
 
+.turn-banner {
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: 1px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: #1b2430;
+  margin-bottom: 8px;
+  border: 1px solid #2a3444;
+}
+
+.turn-banner.your-turn {
+  background: #1f3624;
+  border-color: #2f6f3a;
+  color: #b9f2c5;
+}
+
+.deal-banner {
+  font-size: 14px;
+  color: var(--muted);
+  margin-bottom: 8px;
+}
+
 .actions {
   margin-top: 14px;
   display: flex;
@@ -120,30 +142,42 @@ body {
 
 .hand {
   margin-top: 14px;
-  min-height: 120px;
+  min-height: 140px;
   display: flex;
-  gap: 10px;
+  gap: 12px;
   flex-wrap: wrap;
 }
 
 .card-tile {
-  padding: 12px 14px;
+  width: 90px;
+  height: 130px;
   border-radius: 12px;
-  border: 2px solid #ffd966;
-  background: linear-gradient(160deg, #1a2230, #0e131b);
-  color: #ffe8a3;
+  border: 2px solid #f2f2f2;
+  background: linear-gradient(180deg, #ffffff, #e9eef4);
+  color: #1c1c1c;
   cursor: pointer;
-  min-width: 78px;
   text-align: center;
   font-weight: 700;
-  letter-spacing: 0.5px;
-  box-shadow: 0 6px 16px rgba(0,0,0,0.35), inset 0 0 0 1px rgba(255,217,102,0.25);
+  box-shadow: 0 6px 16px rgba(0,0,0,0.35);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.card-value {
+  font-size: 28px;
+}
+
+.card-suit {
+  font-size: 24px;
 }
 
 .card-tile.selected {
   border-color: #ff9d5c;
   box-shadow: 0 0 0 2px rgba(255,157,92,0.25), 0 8px 18px rgba(0,0,0,0.45);
-  transform: translateY(-2px);
+  transform: translateY(-4px);
 }
 
 .players {
@@ -189,5 +223,5 @@ body {
 
 @media (max-width: 900px) {
   .grid { grid-template-columns: 1fr; }
+  .card-tile { width: 82px; height: 120px; }
 }
-

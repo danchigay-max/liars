@@ -1,9 +1,13 @@
-п»ї// client.js
-
+// client.js
 var ws = null;
 var playerId = null;
 var gameState = null;
 var selectedIndexes = [];
+var dealTimer = null;
+var dealIdSeen = null;
+var dealVisibleCount = 0;
+var suspenseUntil = 0;
+var suspenseTimer = null;
 
 function logLine(text) {
   var el = document.getElementById('log');
@@ -18,7 +22,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
 function handleJoin() {
   var nameInput = document.getElementById('playerName');
-  var name = (nameInput && nameInput.value && nameInput.value.trim()) || ('РРіСЂРѕРє_' + Math.floor(Math.random() * 1000));
+  var name = (nameInput && nameInput.value && nameInput.value.trim()) || ('Игрок_' + Math.floor(Math.random() * 1000));
 
   var protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
   var wsUrl = protocol + '//' + window.location.host;
@@ -26,7 +30,7 @@ function handleJoin() {
   try {
     ws = new WebSocket(wsUrl);
   } catch (e) {
-    alert('РќРµ СѓРґР°Р»РѕСЃСЊ РїРѕРґРєР»СЋС‡РёС‚СЊСЃСЏ Рє СЃРµСЂРІРµСЂСѓ');
+    alert('Не удалось подключиться к серверу');
     return;
   }
 
@@ -56,30 +60,73 @@ function handleJoin() {
 
     if (msg.type === 'gameState') {
       gameState = msg.data;
+      handleDealAnimation();
       renderGame();
       renderPlayers([]);
     }
 
     if (msg.type === 'challengeResult') {
-      var loserName = findPlayerName(msg.data.loserId);
-      var liarName = findPlayerName(msg.data.liarId);
-      var challengerName = findPlayerName(msg.data.challengerId);
-      var text = msg.data.truthful
-        ? ('РџСЂР°РІРґР°! ' + challengerName + ' РѕС€РёР±СЃСЏ.')
-        : ('Р›РѕР¶СЊ! ' + liarName + ' РїРѕР№РјР°РЅ.');
-      text += msg.data.hit ? (' Р’С‹СЃС‚СЂРµР». ' + loserName + ' РїРѕРіРёР±.') : (' РџСѓСЃС‚Рѕ. ' + loserName + ' Р¶РёРІ.');
-      logLine(text);
+      handleChallengeSuspense(msg.data);
     }
 
     if (msg.type === 'roundEnd') {
       var w = findPlayerName(msg.data.winnerId);
-      logLine('Р Р°СѓРЅРґ Р·Р°РІРµСЂС€РµРЅ. РџРѕР±РµРґРёР»: ' + (w || '...'));
+      logLine('Раунд завершен. Победил: ' + (w || '...'));
     }
   };
 
   ws.onerror = function() {
-    alert('РћС€РёР±РєР° СЃРѕРµРґРёРЅРµРЅРёСЏ. РџСЂРѕРІРµСЂСЊС‚Рµ РєРѕРЅСЃРѕР»СЊ.');
+    alert('Ошибка соединения. Проверьте консоль.');
   };
+}
+
+function handleDealAnimation() {
+  if (!gameState) return;
+  if (!gameState.dealing) return;
+
+  if (dealIdSeen !== gameState.dealId) {
+    dealIdSeen = gameState.dealId;
+    dealVisibleCount = 0;
+    if (dealTimer) clearInterval(dealTimer);
+    dealTimer = setInterval(function() {
+      var total = (gameState.myHand && gameState.myHand.length) ? gameState.myHand.length : 0;
+      if (dealVisibleCount < total) {
+        dealVisibleCount++;
+        renderGame();
+      } else {
+        clearInterval(dealTimer);
+        dealTimer = null;
+      }
+    }, gameState.dealIntervalMs || 300);
+  }
+}
+
+function handleChallengeSuspense(data) {
+  var loserName = findPlayerName(data.loserId);
+  var liarName = findPlayerName(data.liarId);
+  var challengerName = findPlayerName(data.challengerId);
+
+  var base = data.truthful
+    ? ('Правда! ' + challengerName + ' ошибся.')
+    : ('Ложь! ' + liarName + ' пойман.');
+
+  var delay = data.delayMs || 4000;
+  var start = Date.now();
+  suspenseUntil = start + delay;
+
+  if (suspenseTimer) clearInterval(suspenseTimer);
+  suspenseTimer = setInterval(function() {
+    var elapsed = Date.now() - start;
+    var dots = Math.min(3, Math.floor(elapsed / 700) + 1);
+    logLine('Игрок ' + loserName + ' стреляет в себя' + new Array(dots + 1).join('.'));
+    if (Date.now() >= suspenseUntil) {
+      clearInterval(suspenseTimer);
+      suspenseTimer = null;
+      var text = base + (data.hit ? (' Выстрел. ' + loserName + ' погиб.') : (' Пусто. ' + loserName + ' жив.'));
+      logLine(text);
+      renderGame();
+    }
+  }, 400);
 }
 
 function renderGame() {
@@ -94,11 +141,11 @@ function renderGame() {
   // Lobby
   if (!gameState.started) {
     info.innerHTML = '' +
-      '<div>РћР¶РёРґР°РЅРёРµ РёРіСЂРѕРєРѕРІ...</div>' +
-      '<div>Р—Р° СЃС‚РѕР»РѕРј: <b>' + (gameState.players ? gameState.players.length : 0) + '</b></div>' +
-      '<div>РќСѓР¶РЅРѕ РјРёРЅРёРјСѓРј 2 РёРіСЂРѕРєР°</div>';
+      '<div>Ожидание игроков...</div>' +
+      '<div>За столом: <b>' + (gameState.players ? gameState.players.length : 0) + '</b></div>' +
+      '<div>Нужно минимум 2 игрока</div>';
 
-    actions.innerHTML = '<button class="btn primary" id="startGameBtn">РќР°С‡Р°С‚СЊ РёРіСЂСѓ</button>';
+    actions.innerHTML = '<button class="btn primary" id="startGameBtn">Начать игру</button>';
     var btn = document.getElementById('startGameBtn');
     if (btn) {
       btn.onclick = function() {
@@ -114,27 +161,48 @@ function renderGame() {
 
   var isMyTurn = gameState.currentPlayerId === playerId;
   var roundCard = gameState.currentRoundCard || '?';
+  var dealing = !!gameState.dealing;
+  var suspense = Date.now() < suspenseUntil;
+
+  var turnText = isMyTurn ? 'ВАШ ХОД' : ('ХОД ИГРОКА: ' + findPlayerName(gameState.currentPlayerId));
+  var bannerClass = isMyTurn ? 'turn-banner your-turn' : 'turn-banner';
+
+  var lastPlayView = gameState.lastPlayView || null;
+  var lastLine = '';
+  if (lastPlayView) {
+    if (lastPlayView.actualCards && lastPlayView.actualCards.length) {
+      lastLine = '<div>Вы выложили: <b>' + cardsToLabel(lastPlayView.actualCards) + '</b></div>';
+    } else {
+      lastLine = '<div>Выложил: <b>' + findPlayerName(lastPlayView.playerId) + '</b> — ' + lastPlayView.claimedCount + ' карт(ы) ' + lastPlayView.claimedCard + '</div>';
+    }
+  }
 
   info.innerHTML = '' +
-    '<div>Р Р°СѓРЅРґ: <b>' + roundCard + '</b></div>' +
-    '<div>РҐРѕРґ РёРіСЂРѕРєР°: <b>' + findPlayerName(gameState.currentPlayerId) + '</b></div>' +
-    '<div>РљР°СЂС‚ РІ СЃР±СЂРѕСЃРµ: <b>' + (gameState.pileCount || 0) + '</b></div>' +
-    (gameState.lastPlay ? '<div>РџРѕСЃР»РµРґРЅСЏСЏ СЃС‚Р°РІРєР°: <b>' + gameState.lastPlay.claimedCount + '</b> РєР°СЂС‚</div>' : '') +
-    (gameState.lastPlay ? '<div>Р’С‹Р»РѕР¶РёР»: <b>' + findPlayerName(gameState.lastPlay.playerId) + '</b> вЂ” ' + cardsToLabel(gameState.lastPlay.cards) + '</div>' : '');
+    '<div class="' + bannerClass + '">' + turnText + '</div>' +
+    (dealing ? '<div class="deal-banner">Раздача карт...</div>' : '') +
+    '<div>Раунд: <b>' + roundCard + '</b></div>' +
+    '<div>Карт в сбросе: <b>' + (gameState.pileCount || 0) + '</b></div>' +
+    (gameState.lastPlay ? '<div>Последняя ставка: <b>' + gameState.lastPlay.claimedCount + '</b> карт</div>' : '') +
+    lastLine;
 
   renderHand();
 
   actions.innerHTML = '';
+  if (dealing || suspense) {
+    actions.innerHTML = '<div class="hint">Ожидание...</div>';
+    return;
+  }
+
   if (isMyTurn) {
-    actions.innerHTML += '<button class="btn primary" id="playBtn">РЎС‹РіСЂР°С‚СЊ (' + selectedIndexes.length + ')</button>';
+    actions.innerHTML += '<button class="btn primary" id="playBtn">Сыграть (' + selectedIndexes.length + ')</button>';
     if (gameState.lastPlay) {
-      actions.innerHTML += '<button class="btn danger" id="challengeBtn">РћСЃРїРѕСЂРёС‚СЊ</button>';
+      actions.innerHTML += '<button class="btn danger" id="challengeBtn">Оспорить</button>';
     }
 
     var playBtn = document.getElementById('playBtn');
     if (playBtn) {
       playBtn.onclick = function() {
-        if (!selectedIndexes.length) return alert('Р’С‹Р±РµСЂРёС‚Рµ РєР°СЂС‚С‹');
+        if (!selectedIndexes.length) return alert('Выберите карты');
         ws.send(JSON.stringify({ type: 'playCards', data: { cardIndexes: selectedIndexes } }));
         selectedIndexes = [];
       };
@@ -148,11 +216,11 @@ function renderGame() {
     }
   } else {
     if (gameState.lastPlay) {
-      actions.innerHTML = '<button class="btn danger" id="challengeBtn">РћСЃРїРѕСЂРёС‚СЊ</button>';
+      actions.innerHTML = '<button class="btn danger" id="challengeBtn">Оспорить</button>';
       var ch = document.getElementById('challengeBtn');
       if (ch) ch.onclick = function() { ws.send(JSON.stringify({ type: 'challenge', data: {} })); };
     } else {
-      actions.innerHTML = '<div class="hint">РћР¶РёРґР°РЅРёРµ С…РѕРґР°...</div>';
+      actions.innerHTML = '<div class="hint">Ожидание хода...</div>';
     }
   }
 }
@@ -164,13 +232,17 @@ function renderHand() {
 
   if (!gameState || !gameState.myHand) return;
 
-  for (var i = 0; i < gameState.myHand.length; i++) {
+  var total = gameState.myHand.length;
+  var showCount = gameState.dealing ? Math.min(dealVisibleCount, total) : total;
+
+  for (var i = 0; i < showCount; i++) {
     var card = gameState.myHand[i];
     var el = document.createElement('div');
     el.className = 'card-tile' + (selectedIndexes.indexOf(i) >= 0 ? ' selected' : '');
-    el.textContent = cardLabel(card);
+    el.innerHTML = cardInner(card);
     (function(idx) {
       el.onclick = function() {
+        if (gameState.dealing) return;
         var pos = selectedIndexes.indexOf(idx);
         if (pos >= 0) selectedIndexes.splice(pos, 1);
         else selectedIndexes.push(idx);
@@ -179,6 +251,16 @@ function renderHand() {
     })(i);
     myHand.appendChild(el);
   }
+}
+
+function cardInner(card) {
+  if (card === 'JOKER') {
+    return '<div class="card-value">JOKER</div>';
+  }
+  var suit = '¦';
+  if (card === 'K') suit = '¦';
+  if (card === 'Q') suit = '¦';
+  return '<div class="card-value">' + card + '</div><div class="card-suit">' + suit + '</div>';
 }
 
 function cardLabel(card) {
@@ -208,7 +290,7 @@ function shotsBar(spent) {
 function renderPlayers(list) {
   var container = document.getElementById('players');
   if (!container) return;
-  container.innerHTML = '<div class="section-title">РРіСЂРѕРєРё</div>';
+  container.innerHTML = '<div class="section-title">Игроки</div>';
 
   var useList = (gameState && gameState.players && gameState.players.length) ? gameState.players : (list || []);
 
@@ -219,11 +301,11 @@ function renderPlayers(list) {
 
     var left = document.createElement('div');
     left.className = 'player-name';
-    left.textContent = p.name + (p.id === playerId ? ' (РІС‹)' : '');
+    left.textContent = p.name + (p.id === playerId ? ' (вы)' : '');
 
     var right = document.createElement('div');
     right.className = 'player-meta';
-    right.textContent = 'Р’С‹СЃС‚СЂРµР»С‹: ' + shotsBar(p.bulletsSpent || 0) + ' В· РџРѕР±РµРґС‹: ' + (p.wins || 0);
+    right.textContent = 'Выстрелы: ' + shotsBar(p.bulletsSpent || 0) + ' · Победы: ' + (p.wins || 0);
 
     row.appendChild(left);
     row.appendChild(right);
@@ -238,4 +320,3 @@ function findPlayerName(id) {
   }
   return '...';
 }
-

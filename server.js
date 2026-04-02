@@ -1,4 +1,4 @@
-ï»¿const http = require('http');
+const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const WebSocket = require('ws');
@@ -13,7 +13,6 @@ const server = http.createServer(function(req, res) {
 
   switch (extname) {
     case '.js':
-      
       contentType = 'text/javascript';
       break;
     case '.css':
@@ -54,8 +53,12 @@ var game = {
   currentRoundCard: null,
   currentPlayerId: null,
   deck: [],
-  pile: [], // last played cards (actual values)
-  lastPlay: null // { playerId, claimedCount, cards[] }
+  pile: [],
+  lastPlay: null, // { playerId, claimedCount, cards[] }
+  dealing: false,
+  dealId: 0,
+  dealIntervalMs: 350,
+  dealTimer: null
 };
 
 var CARD_VALUES = ['A', 'K', 'Q'];
@@ -116,13 +119,25 @@ function dealHands() {
   game.deck = deck;
 }
 
+function startDealing() {
+  dealHands();
+  game.dealing = true;
+  game.dealId = (game.dealId || 0) + 1;
+  if (game.dealTimer) clearTimeout(game.dealTimer);
+  var duration = game.dealIntervalMs * 5 + 200;
+  game.dealTimer = setTimeout(function() {
+    game.dealing = false;
+    broadcastState();
+  }, duration);
+}
+
 function startGame() {
   if (players.length < 2) return false;
   for (var i = 0; i < players.length; i++) {
     players[i].alive = true;
     players[i].bulletsSpent = 0;
   }
-  dealHands();
+  startDealing();
   game.started = true;
   game.currentRoundCard = CARD_VALUES[Math.floor(Math.random() * CARD_VALUES.length)];
   game.currentPlayerId = players[0].id;
@@ -133,7 +148,7 @@ function startGame() {
 }
 
 function startNextRound(startFromPlayerId) {
-  dealHands();
+  startDealing();
   game.currentRoundCard = CARD_VALUES[Math.floor(Math.random() * CARD_VALUES.length)];
   game.pile = [];
   game.lastPlay = null;
@@ -142,7 +157,6 @@ function startNextRound(startFromPlayerId) {
 }
 
 function removeCardsFromHand(player, cardIndexes) {
-  // Sort indexes desc to remove safely
   cardIndexes.sort(function(a, b) { return b - a; });
   var removed = [];
   for (var i = 0; i < cardIndexes.length; i++) {
@@ -163,7 +177,6 @@ function isTruthful(cards, claimedCard) {
 }
 
 function rouletteLoss(player) {
-  // one bullet in 6 chambers
   player.bulletsSpent = (player.bulletsSpent || 0) + 1;
   var hit = Math.random() < (1 / 6);
   if (hit) {
@@ -175,7 +188,6 @@ function rouletteLoss(player) {
 function endGameIfNeeded() {
   if (alivePlayersCount() <= 1) {
     game.started = false;
-    // award win to last alive (if exists)
     var winnerId = null;
     for (var i = 0; i < players.length; i++) {
       if (players[i].alive) {
@@ -185,12 +197,11 @@ function endGameIfNeeded() {
       }
     }
     broadcast('roundEnd', { winnerId: winnerId });
-    // new match: reset revolvers and hands for everyone
     for (var j = 0; j < players.length; j++) {
       players[j].alive = true;
       players[j].bulletsSpent = 0;
     }
-    dealHands();
+    startDealing();
     game.started = true;
     game.currentRoundCard = CARD_VALUES[Math.floor(Math.random() * CARD_VALUES.length)];
     game.currentPlayerId = winnerId || (players[0] && players[0].id);
@@ -217,7 +228,10 @@ function buildPublicState() {
     currentRoundCard: game.currentRoundCard,
     currentPlayerId: game.currentPlayerId,
     pileCount: game.pile.length,
-    lastPlay: game.lastPlay ? { playerId: game.lastPlay.playerId, claimedCount: game.lastPlay.claimedCount, cards: game.lastPlay.cards } : null,
+    dealing: game.dealing,
+    dealId: game.dealId,
+    dealIntervalMs: game.dealIntervalMs,
+    lastPlay: game.lastPlay ? { playerId: game.lastPlay.playerId, claimedCount: game.lastPlay.claimedCount } : null,
     players: players.map(function(p) {
       return { id: p.id, name: p.name, alive: p.alive, handCount: p.hand.length, bulletsSpent: p.bulletsSpent || 0, wins: p.wins || 0 };
     })
@@ -230,6 +244,16 @@ function broadcastState() {
     var p = players[i];
     var personal = JSON.parse(JSON.stringify(publicState));
     personal.myHand = p.hand.slice();
+    if (game.lastPlay) {
+      personal.lastPlayView = {
+        playerId: game.lastPlay.playerId,
+        claimedCount: game.lastPlay.claimedCount,
+        claimedCard: game.currentRoundCard,
+        actualCards: (p.id === game.lastPlay.playerId) ? game.lastPlay.cards.slice() : null
+      };
+    } else {
+      personal.lastPlayView = null;
+    }
     if (p.ws.readyState === WebSocket.OPEN) {
       p.ws.send(JSON.stringify({ type: 'gameState', data: personal }));
     }
@@ -241,9 +265,42 @@ function sendPlayersList() {
   broadcast('playersList', list);
 }
 
+function resolveChallenge(challengerId, isAuto) {
+  if (!game.lastPlay) return;
+  var liarId = game.lastPlay.playerId;
+  var liar = players[indexById(liarId)];
+  var challenger = players[indexById(challengerId)];
+  if (!challenger || !challenger.alive) {
+    var nextId = nextAlivePlayerId(liarId);
+    challenger = players[indexById(nextId)];
+  }
+  if (!liar || !challenger) return;
+
+  var truthful = isTruthful(game.lastPlay.cards, game.currentRoundCard);
+  var loser = truthful ? challenger : liar;
+  var hit = rouletteLoss(loser);
+  var delayMs = 3000 + Math.floor(Math.random() * 3001);
+
+  broadcast('challengeResult', {
+    truthful: truthful,
+    liarId: liarId,
+    challengerId: challenger.id,
+    loserId: loser.id,
+    hit: hit,
+    cards: game.lastPlay.cards,
+    delayMs: delayMs,
+    auto: !!isAuto
+  });
+
+  if (endGameIfNeeded()) return;
+
+  var nextStart = loser.alive ? loser.id : nextAlivePlayerId(loser.id);
+  startNextRound(nextStart);
+}
+
 wss.on('connection', function(ws) {
   var playerId = Math.random().toString(36).substr(2, 8);
-  var playerName = 'Ð˜Ð³Ñ€Ð¾Ðº ' + (players.length + 1);
+  var playerName = 'Èãðîê ' + (players.length + 1);
 
   var player = { id: playerId, name: playerName, ws: ws, alive: true, hand: [], bulletsSpent: 0, wins: 0 };
   players.push(player);
@@ -280,12 +337,13 @@ wss.on('connection', function(ws) {
     }
 
     if (!game.started) return;
+    if (game.dealing) return;
+    if (!player.alive) return;
 
     if (type === 'playCards') {
       if (game.currentPlayerId !== player.id) return;
       if (!Array.isArray(data.cardIndexes) || data.cardIndexes.length === 0) return;
 
-      // remove from hand and record play
       var removed = removeCardsFromHand(player, data.cardIndexes);
       if (removed.length === 0) return;
 
@@ -296,37 +354,19 @@ wss.on('connection', function(ws) {
         cards: removed
       };
 
-      // next player's turn
       game.currentPlayerId = nextAlivePlayerId(player.id);
       broadcastState();
+
+      if (player.hand.length === 0) {
+        resolveChallenge(game.currentPlayerId, true);
+      }
       return;
     }
 
     if (type === 'challenge') {
       if (!game.lastPlay) return;
-      // only next player (current turn) can challenge
       if (game.currentPlayerId !== player.id) return;
-
-      var liarId = game.lastPlay.playerId;
-      var liar = players[indexById(liarId)];
-      var truthful = isTruthful(game.lastPlay.cards, game.currentRoundCard);
-      var loser = truthful ? player : liar;
-      var hit = rouletteLoss(loser);
-
-      broadcast('challengeResult', {
-        truthful: truthful,
-        liarId: liarId,
-        challengerId: player.id,
-        loserId: loser.id,
-        hit: hit,
-        cards: game.lastPlay.cards
-      });
-
-      if (endGameIfNeeded()) return;
-
-      // start next round from loser (if alive) or next alive, with new hands
-      var nextId = loser.alive ? loser.id : nextAlivePlayerId(loser.id);
-      startNextRound(nextId);
+      resolveChallenge(player.id, false);
       return;
     }
   });
@@ -349,7 +389,6 @@ wss.on('connection', function(ws) {
 });
 
 server.listen(PORT, '0.0.0.0', function() {
-  console.log('Ð¡ÐµÑ€Ð²ÐµÑ€ Ð·Ð°Ð¿ÑƒÑ‰ÐµÐ½ Ð½Ð° http://0.0.0.0:' + PORT);
+  console.log('Ñåðâåð çàïóùåí íà http://0.0.0.0:' + PORT);
   console.log('WebSocket: ws://0.0.0.0:' + PORT);
 });
-
