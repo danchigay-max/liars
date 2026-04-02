@@ -55,19 +55,21 @@
       <div class="grid">
         <div class="panel info-panel">
           <div id="gameInfo" class="info"></div>
-          <div id="actions" class="actions"></div>
           <div id="log" class="log"></div>
+        </div>
+        <div class="panel table-panel">
+          <div id="players" class="players"></div>
+          <div id="tableLayout" class="table-layout hidden"></div>
+          <div class="hand-bar">
+            <div id="myHand" class="hand"></div>
+            <div id="actions" class="actions"></div>
+          </div>
           <div id="roundControls" class="round-controls">
             <button id="nextRoundBtn" class="btn primary" disabled>Новая раздача</button>
             <label class="auto-next">
               <input type="checkbox" id="autoNextToggle" /> Авто через 5 сек
             </label>
           </div>
-        </div>
-        <div class="panel table-panel">
-          <div id="players" class="players"></div>
-          <div id="tableLayout" class="table-layout hidden"></div>
-          <div id="myHand" class="hand"></div>
         </div>
       </div>
     </section>

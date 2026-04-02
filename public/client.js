@@ -6,6 +6,8 @@ var selectedIndexes = [];
 var dealTimer = null;
 var dealIdSeen = null;
 var dealVisibleCount = 0;
+var dealReady = false;
+var clientDealing = false;
 var suspenseUntil = 0;
 var suspenseTimer = null;
 var tableMode = false;
@@ -184,11 +186,14 @@ function handleJoin() {
 
 function handleDealAnimation() {
   if (!gameState) return;
-  if (!gameState.dealing) return;
+  if (!gameState.started) return;
+  if (!gameState.dealId) return;
 
   if (dealIdSeen !== gameState.dealId) {
     dealIdSeen = gameState.dealId;
     dealVisibleCount = 0;
+    dealReady = false;
+    clientDealing = true;
     lastPileCount = 0;
     lastReveal = null;
     revealStatus = null;
@@ -201,10 +206,12 @@ function handleDealAnimation() {
       renderPlayers([]);
       setTimeout(function() {
         deckPreviewState = 'hidden';
+        dealReady = true;
         renderPlayers([]);
+        renderGame();
         startDealTimer();
-      }, 520);
-    }, 2600);
+      }, 900);
+    }, 3000);
   }
 }
 
@@ -219,8 +226,11 @@ function startDealTimer() {
     } else {
       clearInterval(dealTimer);
       dealTimer = null;
+      clientDealing = false;
+      renderGame();
+      renderPlayers([]);
     }
-  }, gameState.dealIntervalMs || 250);
+  }, gameState.dealIntervalMs || 260);
 }
 
 function handleChallengeSuspense(data) {
@@ -241,6 +251,8 @@ function handleChallengeSuspense(data) {
     lastReveal = { cards: data.cards, until: start + delay };
     revealStatus = data.truthful ? 'truth' : 'lie';
     verdict = { text: data.truthful ? 'ПРАВДА' : 'ЛОЖЬ', type: data.truthful ? 'truth' : 'lie', until: start + delay };
+    renderPlayers([]);
+    renderGame();
   }
 
   if (suspenseTimer) clearInterval(suspenseTimer);
@@ -299,7 +311,7 @@ function animateThrow() {
   }
 
   isThrowing = true;
-  setTimeout(function() { isThrowing = false; }, 360);
+  setTimeout(function() { isThrowing = false; }, 380);
   return true;
 }
 
@@ -329,6 +341,8 @@ function renderGame() {
 
   // Lobby
   if (!gameState.started) {
+    clientDealing = false;
+    dealReady = false;
     info.innerHTML = '' +
       '<div>Ожидание игроков...</div>' +
       '<div>За столом: <b>' + (gameState.players ? gameState.players.length : 0) + '</b></div>' +
@@ -353,7 +367,7 @@ function renderGame() {
   currentTurnText = currentTurnMine ? 'ВАШ ХОД' : ('ХОД: ' + findPlayerName(gameState.currentPlayerId));
 
   var roundCard = gameState.currentRoundCard || '?';
-  var dealing = !!gameState.dealing;
+  var dealing = !!clientDealing;
   var suspense = Date.now() < suspenseUntil;
 
   var tableTitle = tableName(roundCard);
@@ -402,7 +416,7 @@ function renderGame() {
             ws.send(JSON.stringify({ type: 'playCards', data: { cardIndexes: selectedIndexes } }));
           }
           selectedIndexes = [];
-        }, 300);
+        }, 320);
       };
     }
 
@@ -440,7 +454,7 @@ function renderHand() {
   if (!gameState || !gameState.myHand) return;
 
   var total = gameState.myHand.length;
-  var showCount = gameState.dealing ? Math.min(dealVisibleCount, total) : total;
+  var showCount = clientDealing ? (dealReady ? Math.min(dealVisibleCount, total) : 0) : total;
 
   for (var i = 0; i < showCount; i++) {
     var card = gameState.myHand[i];
@@ -598,6 +612,7 @@ function renderTableLayout(container) {
 
   var playersList = (gameState && gameState.players) ? gameState.players.slice() : [];
   var seats = seatOrder(playersList.length);
+  var showSeatCards = !gameState || !clientDealing || dealReady;
   for (var i = 0; i < seats.length; i++) {
     var seat = document.createElement('div');
     seat.className = 'seat seat-' + seats[i].pos;
@@ -616,7 +631,7 @@ function renderTableLayout(container) {
 
       var cards = document.createElement('div');
       cards.className = 'seat-cards';
-      var count = p.handCount || 0;
+      var count = showSeatCards ? (p.handCount || 0) : 0;
       for (var c = 0; c < count; c++) {
         var back = document.createElement('div');
         back.className = 'card-back deal-in';
@@ -629,11 +644,15 @@ function renderTableLayout(container) {
     container.appendChild(seat);
   }
 
-  if (gameState && gameState.dealing) {
+  if (deckPreviewState === 'collapse') {
+    applyPreviewCollapse(preview);
+  }
+
+  if (gameState && clientDealing && dealReady) {
     var dealKey = 'deal-' + gameState.dealId;
     if (container.getAttribute('data-deal') !== dealKey) {
       container.setAttribute('data-deal', dealKey);
-      setTimeout(function() { applyDealFromCenter(container); }, 60);
+      setTimeout(function() { applyDealFromCenter(container); }, 80);
     }
   }
 
@@ -645,6 +664,25 @@ function buildPileCaption() {
   if (!lastPlayView) return '';
   var name = findPlayerName(lastPlayView.playerId);
   return 'Сбросил: ' + name + ' - ' + lastPlayView.claimedCount + ' карт(ы)';
+}
+
+function applyPreviewCollapse(preview) {
+  if (!preview || preview.getAttribute('data-collapse') === '1') return;
+  preview.setAttribute('data-collapse', '1');
+  var cards = preview.querySelectorAll('.preview-card');
+  var prect = preview.getBoundingClientRect();
+  var cx = prect.left + prect.width / 2;
+  var cy = prect.top + prect.height / 2;
+  for (var i = 0; i < cards.length; i++) {
+    var card = cards[i];
+    var rect = card.getBoundingClientRect();
+    var dx = cx - (rect.left + rect.width / 2);
+    var dy = cy - (rect.top + rect.height / 2);
+    card.style.setProperty('--to-x', dx + 'px');
+    card.style.setProperty('--to-y', dy + 'px');
+    card.style.animationDelay = (i * 10) + 'ms';
+    card.classList.add('preview-collapse');
+  }
 }
 
 function applyDealFromCenter(container) {
@@ -718,7 +756,7 @@ function buildPileHtml() {
   var out = '';
   if (lastReveal && lastReveal.until > now) {
     for (var i = 0; i < lastReveal.cards.length; i++) {
-      out += '<div class="pile-card face ' + (revealStatus || '') + '">' + cardLabel(lastReveal.cards[i]) + '</div>';
+      out += buildFlipCard(lastReveal.cards[i], true, true);
     }
     return out;
   }
@@ -728,13 +766,22 @@ function buildPileHtml() {
   for (var j = 0; j < count; j++) {
     var isNew = j >= lastPileCount;
     if (lastPlayView && lastPlayView.actualCards) {
-      out += '<div class="pile-card face ' + (revealStatus || '') + (isNew ? ' new-card' : '') + '">' + cardLabel(lastPlayView.actualCards[j]) + '</div>';
+      out += buildFlipCard(lastPlayView.actualCards[j], true, isNew);
     } else {
-      out += '<div class="pile-card' + (isNew ? ' new-card' : '') + '"></div>';
+      out += buildFlipCard(null, false, isNew);
     }
   }
   lastPileCount = count;
   return out;
+}
+
+function buildFlipCard(label, revealed, isNew) {
+  var cls = 'pile-card flip';
+  if (revealed) cls += ' reveal';
+  if (revealStatus) cls += ' ' + revealStatus;
+  if (isNew) cls += ' new-card';
+  var frontText = label ? cardLabel(label) : '';
+  return '<div class="' + cls + '"><div class="pile-inner"><div class="pile-face back"></div><div class="pile-face front">' + frontText + '</div></div></div>';
 }
 
 function buildDeckPreviewHtml() {
@@ -745,11 +792,16 @@ function buildDeckPreviewHtml() {
     { label: 'JOKER', count: 2 }
   ];
   var html = '';
+  var idx = 0;
   for (var r = 0; r < rows.length; r++) {
     var row = rows[r];
     html += '<div class="preview-row">';
     for (var c = 0; c < row.count; c++) {
-      html += '<div class="preview-card">' + row.label + '</div>';
+      html += '<div class="preview-card" data-idx="' + idx + '">' +
+        '<div class="preview-face front">' + row.label + '</div>' +
+        '<div class="preview-face back"></div>' +
+      '</div>';
+      idx++;
     }
     html += '</div>';
   }
