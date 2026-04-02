@@ -47,7 +47,7 @@ const server = http.createServer(function(req, res) {
 
 const wss = new WebSocket.Server({ server: server });
 
-var players = []; // { id, name, ws, alive, hand[], bulletsSpent, wins }
+var players = []; // { id, name, ws, alive, hand[], bulletsSpent, wins, chamber, shotsInChamber }
 var game = {
   started: false,
   currentRoundCard: null,
@@ -58,7 +58,8 @@ var game = {
   dealing: false,
   dealId: 0,
   dealIntervalMs: 350,
-  dealTimer: null
+  dealTimer: null,
+  suspenseUntil: 0
 };
 
 var CARD_VALUES = ['A', 'K', 'Q'];
@@ -107,6 +108,11 @@ function alivePlayersCount() {
   return count;
 }
 
+function initRevolver(player) {
+  player.shotsInChamber = 0;
+  player.chamber = 1 + Math.floor(Math.random() * 6); // гарантированно 1 из 6
+}
+
 function dealHands() {
   var deck = createDeck();
   for (var i = 0; i < players.length; i++) {
@@ -136,6 +142,7 @@ function startGame() {
   for (var i = 0; i < players.length; i++) {
     players[i].alive = true;
     players[i].bulletsSpent = 0;
+    initRevolver(players[i]);
   }
   startDealing();
   game.started = true;
@@ -143,6 +150,7 @@ function startGame() {
   game.currentPlayerId = players[0].id;
   game.pile = [];
   game.lastPlay = null;
+  game.suspenseUntil = 0;
   broadcastState();
   return true;
 }
@@ -178,7 +186,8 @@ function isTruthful(cards, claimedCard) {
 
 function rouletteLoss(player) {
   player.bulletsSpent = (player.bulletsSpent || 0) + 1;
-  var hit = Math.random() < (1 / 6);
+  player.shotsInChamber = (player.shotsInChamber || 0) + 1;
+  var hit = player.shotsInChamber >= player.chamber;
   if (hit) {
     player.alive = false;
   }
@@ -200,6 +209,7 @@ function endGameIfNeeded() {
     for (var j = 0; j < players.length; j++) {
       players[j].alive = true;
       players[j].bulletsSpent = 0;
+      initRevolver(players[j]);
     }
     startDealing();
     game.started = true;
@@ -207,6 +217,7 @@ function endGameIfNeeded() {
     game.currentPlayerId = winnerId || (players[0] && players[0].id);
     game.pile = [];
     game.lastPlay = null;
+    game.suspenseUntil = 0;
     broadcastState();
     return true;
   }
@@ -231,6 +242,7 @@ function buildPublicState() {
     dealing: game.dealing,
     dealId: game.dealId,
     dealIntervalMs: game.dealIntervalMs,
+    suspenseUntil: game.suspenseUntil,
     lastPlay: game.lastPlay ? { playerId: game.lastPlay.playerId, claimedCount: game.lastPlay.claimedCount } : null,
     players: players.map(function(p) {
       return { id: p.id, name: p.name, alive: p.alive, handCount: p.hand.length, bulletsSpent: p.bulletsSpent || 0, wins: p.wins || 0 };
@@ -281,6 +293,8 @@ function resolveChallenge(challengerId, isAuto) {
   var hit = rouletteLoss(loser);
   var delayMs = 3000 + Math.floor(Math.random() * 3001);
 
+  game.suspenseUntil = Date.now() + delayMs;
+
   broadcast('challengeResult', {
     truthful: truthful,
     liarId: liarId,
@@ -291,18 +305,22 @@ function resolveChallenge(challengerId, isAuto) {
     delayMs: delayMs,
     auto: !!isAuto
   });
+  broadcastState();
 
-  if (endGameIfNeeded()) return;
-
-  var nextStart = loser.alive ? loser.id : nextAlivePlayerId(loser.id);
-  startNextRound(nextStart);
+  setTimeout(function() {
+    if (endGameIfNeeded()) return;
+    var nextStart = loser.alive ? loser.id : nextAlivePlayerId(loser.id);
+    game.suspenseUntil = 0;
+    startNextRound(nextStart);
+  }, delayMs);
 }
 
 wss.on('connection', function(ws) {
   var playerId = Math.random().toString(36).substr(2, 8);
   var playerName = 'Игрок ' + (players.length + 1);
 
-  var player = { id: playerId, name: playerName, ws: ws, alive: true, hand: [], bulletsSpent: 0, wins: 0 };
+  var player = { id: playerId, name: playerName, ws: ws, alive: true, hand: [], bulletsSpent: 0, wins: 0, chamber: 0, shotsInChamber: 0 };
+  initRevolver(player);
   players.push(player);
 
   ws.send(JSON.stringify({ type: 'init', data: { id: playerId } }));
@@ -338,6 +356,7 @@ wss.on('connection', function(ws) {
 
     if (!game.started) return;
     if (game.dealing) return;
+    if (game.suspenseUntil && Date.now() < game.suspenseUntil) return;
     if (!player.alive) return;
 
     if (type === 'playCards') {

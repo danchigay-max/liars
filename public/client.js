@@ -63,6 +63,7 @@ function handleJoin() {
       handleDealAnimation();
       renderGame();
       renderPlayers([]);
+      if (gameState.suspenseUntil) suspenseUntil = gameState.suspenseUntil;
     }
 
     if (msg.type === 'challengeResult') {
