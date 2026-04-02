@@ -47,9 +47,11 @@ const server = http.createServer(function(req, res) {
 
 const wss = new WebSocket.Server({ server: server });
 
-var players = []; // { id, name, ws, alive, hand[], bulletsSpent, wins, chamber, shotsInChamber }
+var players = []; // { id, name, ws, alive, hand[], bulletsSpent, wins, chamber, shotsInChamber, pendingShot }
 var game = {
   started: false,
+  roundEnded: false,
+  winnerId: null,
   currentRoundCard: null,
   currentPlayerId: null,
   deck: [],
@@ -60,9 +62,8 @@ var game = {
   dealIntervalMs: 350,
   dealTimer: null,
   suspenseUntil: 0,
-  pendingDeathId: null,
   awaitingNextRound: false,
-  nextRoundTimer: null
+  nextStartId: null
 };
 
 var CARD_VALUES = ['A', 'K', 'Q'];
@@ -114,6 +115,7 @@ function alivePlayersCount() {
 function initRevolver(player) {
   player.shotsInChamber = 0;
   player.chamber = 1 + Math.floor(Math.random() * 6); // guaranteed 1 of 6
+  player.pendingShot = false;
 }
 
 function dealHands() {
@@ -140,33 +142,42 @@ function startDealing() {
   }, duration);
 }
 
-function startGame() {
-  if (players.length < 2) return false;
+function resetForNewMatch() {
   for (var i = 0; i < players.length; i++) {
     players[i].alive = true;
     players[i].bulletsSpent = 0;
     initRevolver(players[i]);
   }
+}
+
+function startGame() {
+  if (players.length < 2) return false;
+  resetForNewMatch();
   startDealing();
   game.started = true;
+  game.roundEnded = false;
+  game.winnerId = null;
   game.currentRoundCard = CARD_VALUES[Math.floor(Math.random() * CARD_VALUES.length)];
   game.currentPlayerId = players[0].id;
   game.pile = [];
   game.lastPlay = null;
   game.suspenseUntil = 0;
-  game.pendingDeathId = null;
   game.awaitingNextRound = false;
+  game.nextStartId = null;
   broadcastState();
   return true;
 }
 
 function startNextRound(startFromPlayerId) {
-  game.awaitingNextRound = false;
-  if (game.nextRoundTimer) {
-    clearTimeout(game.nextRoundTimer);
-    game.nextRoundTimer = null;
+  if (game.roundEnded) {
+    resetForNewMatch();
+    game.roundEnded = false;
+    game.winnerId = null;
   }
+  game.awaitingNextRound = false;
+  game.nextStartId = null;
   startDealing();
+  game.started = true;
   game.currentRoundCard = CARD_VALUES[Math.floor(Math.random() * CARD_VALUES.length)];
   game.pile = [];
   game.lastPlay = null;
@@ -194,10 +205,11 @@ function isTruthful(cards, claimedCard) {
   return true;
 }
 
-function rouletteLoss(player) {
+function rouletteShot(player) {
   player.bulletsSpent = (player.bulletsSpent || 0) + 1;
   player.shotsInChamber = (player.shotsInChamber || 0) + 1;
   var hit = player.shotsInChamber >= player.chamber;
+  player.pendingShot = true;
   return hit;
 }
 
@@ -212,21 +224,11 @@ function endGameIfNeeded() {
         break;
       }
     }
+    game.roundEnded = true;
+    game.winnerId = winnerId;
+    game.awaitingNextRound = true;
+    game.nextStartId = winnerId || (players[0] && players[0].id);
     broadcast('roundEnd', { winnerId: winnerId });
-    for (var j = 0; j < players.length; j++) {
-      players[j].alive = true;
-      players[j].bulletsSpent = 0;
-      initRevolver(players[j]);
-    }
-    startDealing();
-    game.started = true;
-    game.currentRoundCard = CARD_VALUES[Math.floor(Math.random() * CARD_VALUES.length)];
-    game.currentPlayerId = winnerId || (players[0] && players[0].id);
-    game.pile = [];
-    game.lastPlay = null;
-    game.suspenseUntil = 0;
-    game.pendingDeathId = null;
-    game.awaitingNextRound = false;
     broadcastState();
     return true;
   }
@@ -245,6 +247,8 @@ function broadcast(type, data) {
 function buildPublicState() {
   return {
     started: game.started,
+    roundEnded: game.roundEnded,
+    winnerId: game.winnerId,
     currentRoundCard: game.currentRoundCard,
     currentPlayerId: game.currentPlayerId,
     pileCount: game.pile.length,
@@ -255,7 +259,9 @@ function buildPublicState() {
     awaitingNextRound: game.awaitingNextRound,
     lastPlay: game.lastPlay ? { playerId: game.lastPlay.playerId, claimedCount: game.lastPlay.claimedCount } : null,
     players: players.map(function(p) {
-      return { id: p.id, name: p.name, alive: p.alive, handCount: p.hand.length, bulletsSpent: p.bulletsSpent || 0, wins: p.wins || 0 };
+      var shownShots = p.bulletsSpent || 0;
+      if (p.pendingShot) shownShots = Math.max(0, shownShots - 1);
+      return { id: p.id, name: p.name, alive: p.alive, handCount: p.hand.length, bulletsSpent: shownShots, wins: p.wins || 0 };
     })
   };
 }
@@ -300,7 +306,7 @@ function resolveChallenge(challengerId, isAuto) {
 
   var truthful = isTruthful(game.lastPlay.cards, game.currentRoundCard);
   var loser = truthful ? challenger : liar;
-  var hit = rouletteLoss(loser);
+  var hit = rouletteShot(loser);
   var delayMs = 3000 + Math.floor(Math.random() * 3001);
 
   game.suspenseUntil = Date.now() + delayMs;
@@ -318,9 +324,9 @@ function resolveChallenge(challengerId, isAuto) {
   broadcastState();
 
   setTimeout(function() {
+    loser.pendingShot = false;
     if (hit) {
       loser.alive = false;
-      game.pendingDeathId = loser.id;
     }
 
     if (endGameIfNeeded()) return;
@@ -329,13 +335,8 @@ function resolveChallenge(challengerId, isAuto) {
 
     if (hit) {
       game.awaitingNextRound = true;
+      game.nextStartId = loser.alive ? loser.id : nextAlivePlayerId(loser.id);
       broadcastState();
-      if (game.nextRoundTimer) clearTimeout(game.nextRoundTimer);
-      game.nextRoundTimer = setTimeout(function() {
-        if (game.awaitingNextRound) {
-          startNextRound(loser.alive ? loser.id : nextAlivePlayerId(loser.id));
-        }
-      }, 5000);
     } else {
       var nextStart = loser.alive ? loser.id : nextAlivePlayerId(loser.id);
       startNextRound(nextStart);
@@ -347,7 +348,7 @@ wss.on('connection', function(ws) {
   var playerId = Math.random().toString(36).substr(2, 8);
   var playerName = 'Игрок ' + (players.length + 1);
 
-  var player = { id: playerId, name: playerName, ws: ws, alive: true, hand: [], bulletsSpent: 0, wins: 0, chamber: 0, shotsInChamber: 0 };
+  var player = { id: playerId, name: playerName, ws: ws, alive: true, hand: [], bulletsSpent: 0, wins: 0, chamber: 0, shotsInChamber: 0, pendingShot: false };
   initRevolver(player);
   players.push(player);
 
@@ -375,6 +376,17 @@ wss.on('connection', function(ws) {
       return;
     }
 
+    if (type === 'chat') {
+      if (typeof data.text === 'string') {
+        var text = data.text.trim();
+        if (text.length > 0) {
+          if (text.length > 160) text = text.slice(0, 160);
+          broadcast('chat', { playerId: player.id, name: player.name, text: text, ts: Date.now() });
+        }
+      }
+      return;
+    }
+
     if (type === 'startGame') {
       if (!game.started) {
         startGame();
@@ -384,7 +396,7 @@ wss.on('connection', function(ws) {
 
     if (type === 'startNextRound') {
       if (game.awaitingNextRound) {
-        startNextRound(nextAlivePlayerId(game.currentPlayerId));
+        startNextRound(game.nextStartId || nextAlivePlayerId(game.currentPlayerId));
       }
       return;
     }
@@ -444,6 +456,6 @@ wss.on('connection', function(ws) {
 });
 
 server.listen(PORT, '0.0.0.0', function() {
-  console.log('Сервер запущен на http://0.0.0.0:' + PORT);
+  console.log('Server started on http://0.0.0.0:' + PORT);
   console.log('WebSocket: ws://0.0.0.0:' + PORT);
 });

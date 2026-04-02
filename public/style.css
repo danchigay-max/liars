@@ -186,25 +186,17 @@ body {
   transform: rotate(180deg);
 }
 
-.card-suit {
+.card-value {
   position: absolute;
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  font-size: 32px;
+  font-size: 28px;
 }
 
 .card-value.joker {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  font-size: 18px;
+  font-size: 16px;
   letter-spacing: 1px;
-}
-
-.red {
-  color: #c0392b;
 }
 
 .card-tile.selected {
@@ -235,6 +227,7 @@ body {
 
 .player-name {
   font-weight: 700;
+  position: relative;
 }
 
 .player-meta {
@@ -257,6 +250,16 @@ body {
   box-shadow: inset 0 0 0 1px rgba(255,255,255,0.05);
 }
 
+.chat-bubble {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 4px 8px;
+  border-radius: 8px;
+  background: #2b3341;
+  font-size: 12px;
+  color: #e9e2d6;
+}
+
 .log {
   margin-top: 14px;
   background: #0b1118;
@@ -272,8 +275,257 @@ body {
   color: var(--muted);
 }
 
+.game-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 10px;
+}
+
+.round-controls {
+  margin-top: 12px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.auto-next {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.hidden {
+  display: none !important;
+}
+
+/* Floating buttons */
+.floating {
+  position: fixed;
+  z-index: 20;
+  padding: 10px 14px;
+  border-radius: 12px;
+  border: 1px solid #263244;
+  background: #1b2430;
+  color: var(--text);
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.chat-toggle {
+  left: 12px;
+  top: 40%;
+}
+
+.help-toggle {
+  right: 16px;
+  bottom: 16px;
+  font-size: 22px;
+  width: 48px;
+  height: 48px;
+  border-radius: 24px;
+}
+
+/* Chat drawer */
+.chat-drawer {
+  position: fixed;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 300px;
+  background: #121824;
+  border-right: 1px solid #263244;
+  transform: translateX(-100%);
+  transition: transform 0.25s ease;
+  z-index: 15;
+  display: flex;
+  flex-direction: column;
+}
+
+.chat-drawer.open {
+  transform: translateX(0);
+}
+
+.chat-header {
+  padding: 14px;
+  font-weight: 700;
+  border-bottom: 1px solid #263244;
+}
+
+.chat-messages {
+  padding: 10px;
+  flex: 1;
+  overflow-y: auto;
+}
+
+.chat-msg {
+  margin-bottom: 6px;
+  font-size: 13px;
+}
+
+.chat-name {
+  color: var(--accent);
+}
+
+.chat-input {
+  padding: 10px;
+  border-top: 1px solid #263244;
+  display: flex;
+  gap: 6px;
+}
+
+.chat-input input {
+  flex: 1;
+  padding: 8px;
+  border-radius: 8px;
+  border: 1px solid #263244;
+  background: #0d1218;
+  color: var(--text);
+}
+
+/* Modal */
+.modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.6);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  z-index: 30;
+}
+
+.modal.open {
+  display: flex;
+}
+
+.modal-content {
+  background: linear-gradient(180deg, var(--panel), var(--panel-2));
+  border: 1px solid #263244;
+  border-radius: 12px;
+  padding: 16px;
+  width: min(520px, 90vw);
+}
+
+.modal-title {
+  font-size: 18px;
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+
+.modal-text {
+  font-size: 14px;
+  color: var(--muted);
+  line-height: 1.5;
+  margin-bottom: 12px;
+}
+
+/* Table layout */
+.table-layout {
+  position: relative;
+  height: 320px;
+  border: 1px dashed #2a3444;
+  border-radius: 12px;
+  margin-bottom: 12px;
+  background: radial-gradient(circle at center, #1a2430, #0d1118 60%);
+}
+
+.table-center {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  flex-direction: column;
+}
+
+.pile {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.pile-card {
+  width: 36px;
+  height: 52px;
+  border-radius: 6px;
+  background: linear-gradient(135deg, #233a5e, #0e1a2b);
+  border: 1px solid #38527a;
+}
+
+.pile-card.face {
+  background: #f1f1f1;
+  color: #111;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+}
+
+.deck-preview {
+  opacity: 0;
+  transform: scale(0.9);
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+.deck-preview.show {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.preview-row {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 4px;
+  justify-content: center;
+}
+
+.preview-card {
+  width: 28px;
+  height: 40px;
+  border-radius: 4px;
+  background: #f1f1f1;
+  color: #111;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.seat {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  color: var(--text);
+  font-size: 12px;
+}
+
+.seat-top { top: 8px; left: 50%; transform: translateX(-50%); }
+.seat-right { right: 8px; top: 50%; transform: translateY(-50%); }
+.seat-bottom { bottom: 8px; left: 50%; transform: translateX(-50%); }
+.seat-left { left: 8px; top: 50%; transform: translateY(-50%); }
+
+.seat-name {
+  font-weight: 700;
+  position: relative;
+}
+
+.seat-name.you {
+  color: #b9f2c5;
+}
+
+.seat-cards {
+  display: flex;
+  gap: 4px;
+}
+
 @media (max-width: 900px) {
   .grid { grid-template-columns: 1fr; }
   .card-tile { width: 80px; height: 118px; }
   .table-title { font-size: 22px; }
+  .chat-toggle { top: 20%; }
+  .table-layout { height: 260px; }
 }

@@ -8,6 +8,13 @@ var dealIdSeen = null;
 var dealVisibleCount = 0;
 var suspenseUntil = 0;
 var suspenseTimer = null;
+var tableMode = false;
+var autoNext = false;
+var autoNextTimer = null;
+var chatBubbles = {};
+var lastReveal = null;
+var deckPreviewVisible = false;
+var deckPreviewTimer = null;
 
 function logLine(text) {
   var el = document.getElementById('log');
@@ -15,10 +22,74 @@ function logLine(text) {
   el.textContent = text;
 }
 
+function truncate(text, len) {
+  if (!text) return '';
+  if (text.length <= len) return text;
+  return text.slice(0, len) + '...';
+}
+
 document.addEventListener('DOMContentLoaded', function() {
   var joinBtn = document.getElementById('joinBtn');
   if (joinBtn) joinBtn.addEventListener('click', handleJoin);
+
+  var chatToggle = document.getElementById('chatToggle');
+  var chatDrawer = document.getElementById('chatDrawer');
+  if (chatToggle && chatDrawer) {
+    chatToggle.onclick = function() {
+      chatDrawer.classList.toggle('open');
+    };
+  }
+
+  var helpToggle = document.getElementById('helpToggle');
+  var rulesModal = document.getElementById('rulesModal');
+  var rulesClose = document.getElementById('rulesClose');
+  if (helpToggle && rulesModal) {
+    helpToggle.onclick = function() { rulesModal.classList.add('open'); };
+  }
+  if (rulesClose && rulesModal) {
+    rulesClose.onclick = function() { rulesModal.classList.remove('open'); };
+  }
+
+  if (rulesModal) {
+    rulesModal.onclick = function(e) {
+      if (e.target === rulesModal) rulesModal.classList.remove('open');
+    };
+  }
+
+  var layoutToggle = document.getElementById('layoutToggle');
+  if (layoutToggle) {
+    layoutToggle.onclick = function() {
+      tableMode = !tableMode;
+      renderPlayers([]);
+    };
+  }
+
+  var autoToggle = document.getElementById('autoNextToggle');
+  if (autoToggle) {
+    autoToggle.onchange = function() {
+      autoNext = !!autoToggle.checked;
+      scheduleAutoNext();
+    };
+  }
+
+  var chatSend = document.getElementById('chatSend');
+  var chatInput = document.getElementById('chatInput');
+  if (chatSend && chatInput) {
+    chatSend.onclick = function() { sendChat(); };
+    chatInput.addEventListener('keydown', function(e) {
+      if (e.key === 'Enter') sendChat();
+    });
+  }
 });
+
+function sendChat() {
+  var input = document.getElementById('chatInput');
+  if (!input || !ws || ws.readyState !== WebSocket.OPEN) return;
+  var text = (input.value || '').trim();
+  if (!text) return;
+  ws.send(JSON.stringify({ type: 'chat', data: { text: text } }));
+  input.value = '';
+}
 
 function handleJoin() {
   var nameInput = document.getElementById('playerName');
@@ -64,6 +135,7 @@ function handleJoin() {
       renderGame();
       renderPlayers([]);
       if (gameState.suspenseUntil) suspenseUntil = gameState.suspenseUntil;
+      scheduleAutoNext();
     }
 
     if (msg.type === 'challengeResult') {
@@ -73,6 +145,11 @@ function handleJoin() {
     if (msg.type === 'roundEnd') {
       var w = findPlayerName(msg.data.winnerId);
       logLine('Раунд завершен. Победил: ' + (w || '...'));
+    }
+
+    if (msg.type === 'chat') {
+      addChatMessage(msg.data);
+      showChatBubble(msg.data.playerId, msg.data.text);
     }
   };
 
@@ -88,6 +165,14 @@ function handleDealAnimation() {
   if (dealIdSeen !== gameState.dealId) {
     dealIdSeen = gameState.dealId;
     dealVisibleCount = 0;
+
+    deckPreviewVisible = true;
+    if (deckPreviewTimer) clearTimeout(deckPreviewTimer);
+    deckPreviewTimer = setTimeout(function() {
+      deckPreviewVisible = false;
+      renderPlayers([]);
+    }, 900);
+
     if (dealTimer) clearInterval(dealTimer);
     dealTimer = setInterval(function() {
       var total = (gameState.myHand && gameState.myHand.length) ? gameState.myHand.length : 0;
@@ -126,9 +211,28 @@ function handleChallengeSuspense(data) {
       var reveal = data.cards ? (' Карты: ' + cardsToLabel(data.cards)) : '';
       var text = base + reveal + (data.hit ? (' Выстрел. ' + loserName + ' погиб.') : (' Пусто. ' + loserName + ' жив.'));
       logLine(text);
+      if (data.cards) {
+        lastReveal = { cards: data.cards, until: Date.now() + 4000 };
+      }
       renderGame();
+      renderPlayers([]);
     }
   }, 400);
+}
+
+function scheduleAutoNext() {
+  if (!gameState) return;
+  if (autoNextTimer) {
+    clearTimeout(autoNextTimer);
+    autoNextTimer = null;
+  }
+  if (autoNext && gameState.awaitingNextRound) {
+    autoNextTimer = setTimeout(function() {
+      if (ws && ws.readyState === WebSocket.OPEN && gameState && gameState.awaitingNextRound) {
+        ws.send(JSON.stringify({ type: 'startNextRound', data: {} }));
+      }
+    }, 5000);
+  }
 }
 
 function renderGame() {
@@ -137,6 +241,7 @@ function renderGame() {
   var info = document.getElementById('gameInfo');
   var actions = document.getElementById('actions');
   var myHand = document.getElementById('myHand');
+  var nextRoundBtn = document.getElementById('nextRoundBtn');
 
   if (!info || !actions || !myHand) return;
 
@@ -158,6 +263,7 @@ function renderGame() {
     }
 
     myHand.innerHTML = '';
+    if (nextRoundBtn) nextRoundBtn.disabled = true;
     return;
   }
 
@@ -192,25 +298,9 @@ function renderGame() {
   renderHand();
 
   actions.innerHTML = '';
-  if (dealing || suspense) {
+  if (dealing || suspense || gameState.awaitingNextRound) {
     actions.innerHTML = '<div class="hint">Ожидание...</div>';
-    return;
-  }
-
-  if (gameState.awaitingNextRound) {
-    actions.innerHTML = '<button class="btn primary" id="nextRoundBtn">Новая раздача</button>';
-    var nr = document.getElementById('nextRoundBtn');
-    if (nr) {
-      nr.onclick = function() {
-        if (ws && ws.readyState === WebSocket.OPEN) {
-          ws.send(JSON.stringify({ type: 'startNextRound', data: {} }));
-        }
-      };
-    }
-    return;
-  }
-
-  if (isMyTurn) {
+  } else if (isMyTurn) {
     actions.innerHTML += '<button class="btn primary" id="playBtn">Сыграть (' + selectedIndexes.length + ')</button>';
     if (gameState.lastPlay) {
       actions.innerHTML += '<button class="btn danger" id="challengeBtn">Оспорить</button>';
@@ -239,6 +329,15 @@ function renderGame() {
     } else {
       actions.innerHTML = '<div class="hint">Ожидание хода...</div>';
     }
+  }
+
+  if (nextRoundBtn) {
+    nextRoundBtn.disabled = !gameState.awaitingNextRound;
+    nextRoundBtn.onclick = function() {
+      if (ws && ws.readyState === WebSocket.OPEN && gameState.awaitingNextRound) {
+        ws.send(JSON.stringify({ type: 'startNextRound', data: {} }));
+      }
+    };
   }
 }
 
@@ -274,11 +373,7 @@ function cardInner(card) {
   if (card === 'JOKER') {
     return '<div class="card-value joker">JOKER</div>';
   }
-  var suit = '♠';
-  var cls = '';
-  if (card === 'K') { suit = '♥'; cls = 'red'; }
-  if (card === 'Q') { suit = '♦'; cls = 'red'; }
-  return '<div class="card-corner ' + cls + '">' + card + '</div><div class="card-suit ' + cls + '">' + suit + '</div><div class="card-corner bottom ' + cls + '">' + card + '</div>';
+  return '<div class="card-corner">' + card + '</div><div class="card-value">' + card + '</div><div class="card-corner bottom">' + card + '</div>';
 }
 
 function cardLabel(card) {
@@ -314,7 +409,21 @@ function shotsBar(spent) {
 
 function renderPlayers(list) {
   var container = document.getElementById('players');
-  if (!container) return;
+  var tableLayout = document.getElementById('tableLayout');
+  if (!container || !tableLayout) return;
+
+  if (tableMode) {
+    container.classList.add('hidden');
+    tableLayout.classList.remove('hidden');
+    renderTableLayout(tableLayout);
+  } else {
+    container.classList.remove('hidden');
+    tableLayout.classList.add('hidden');
+    renderPlayersList(container, list);
+  }
+}
+
+function renderPlayersList(container, list) {
   container.innerHTML = '<div class="section-title">Игроки</div>';
 
   var useList = (gameState && gameState.players && gameState.players.length) ? gameState.players : (list || []);
@@ -327,6 +436,9 @@ function renderPlayers(list) {
     var left = document.createElement('div');
     left.className = 'player-name';
     left.textContent = p.name + (p.id === playerId ? ' (вы)' : '');
+
+    var bubble = renderBubble(p.id);
+    if (bubble) left.appendChild(bubble);
 
     var right = document.createElement('div');
     right.className = 'player-meta';
@@ -346,6 +458,145 @@ function renderPlayers(list) {
     row.appendChild(cards);
     container.appendChild(row);
   }
+}
+
+function renderTableLayout(container) {
+  container.innerHTML = '';
+
+  var center = document.createElement('div');
+  center.className = 'table-center';
+
+  var preview = document.createElement('div');
+  preview.className = 'deck-preview' + (deckPreviewVisible ? ' show' : '');
+  preview.innerHTML = buildDeckPreviewHtml();
+
+  var pile = document.createElement('div');
+  pile.className = 'pile';
+  pile.innerHTML = buildPileHtml();
+
+  center.appendChild(preview);
+  center.appendChild(pile);
+  container.appendChild(center);
+
+  var playersList = (gameState && gameState.players) ? gameState.players.slice() : [];
+  var seats = seatOrder(playersList.length);
+  for (var i = 0; i < seats.length; i++) {
+    var seat = document.createElement('div');
+    seat.className = 'seat seat-' + seats[i].pos;
+    var p = seats[i].player;
+    if (p) {
+      var name = document.createElement('div');
+      name.className = 'seat-name' + (p.id === playerId ? ' you' : '');
+      name.textContent = p.name;
+
+      var bubble = renderBubble(p.id);
+      if (bubble) name.appendChild(bubble);
+
+      var cards = document.createElement('div');
+      cards.className = 'seat-cards';
+      var count = p.handCount || 0;
+      for (var c = 0; c < count; c++) {
+        var back = document.createElement('div');
+        back.className = 'card-back';
+        cards.appendChild(back);
+      }
+
+      seat.appendChild(name);
+      seat.appendChild(cards);
+    }
+    container.appendChild(seat);
+  }
+}
+
+function seatOrder(count) {
+  var positions = [];
+  if (count <= 1) {
+    positions = ['bottom'];
+  } else if (count === 2) {
+    positions = ['left', 'right'];
+  } else if (count === 3) {
+    positions = ['left', 'right', 'bottom'];
+  } else {
+    positions = ['top', 'right', 'bottom', 'left'];
+  }
+
+  var list = (gameState && gameState.players) ? gameState.players.slice() : [];
+  var seats = [];
+  for (var i = 0; i < positions.length; i++) {
+    seats.push({ pos: positions[i], player: list[i] || null });
+  }
+  return seats;
+}
+
+function buildPileHtml() {
+  var now = Date.now();
+  if (lastReveal && lastReveal.until > now) {
+    var out = '';
+    for (var i = 0; i < lastReveal.cards.length; i++) {
+      out += '<div class="pile-card face">' + cardLabel(lastReveal.cards[i]) + '</div>';
+    }
+    return out;
+  }
+  if (gameState && gameState.lastPlay) {
+    var count = gameState.lastPlay.claimedCount || 0;
+    var backs = '';
+    for (var j = 0; j < count; j++) {
+      backs += '<div class="pile-card"></div>';
+    }
+    return backs;
+  }
+  return '';
+}
+
+function buildDeckPreviewHtml() {
+  var rows = [
+    { label: 'A', count: 6 },
+    { label: 'K', count: 6 },
+    { label: 'Q', count: 6 },
+    { label: 'JOKER', count: 2 }
+  ];
+  var html = '';
+  for (var r = 0; r < rows.length; r++) {
+    var row = rows[r];
+    html += '<div class="preview-row">';
+    for (var c = 0; c < row.count; c++) {
+      html += '<div class="preview-card">' + row.label + '</div>';
+    }
+    html += '</div>';
+  }
+  return html;
+}
+
+function renderBubble(playerIdForBubble) {
+  var now = Date.now();
+  var bubble = chatBubbles[playerIdForBubble];
+  if (!bubble || bubble.expires <= now) return null;
+  var el = document.createElement('div');
+  el.className = 'chat-bubble';
+  el.textContent = bubble.text;
+  return el;
+}
+
+function showChatBubble(id, text) {
+  chatBubbles[id] = { text: truncate(text, 16), expires: Date.now() + 6000 };
+  setTimeout(function() { renderPlayers([]); }, 50);
+}
+
+function addChatMessage(data) {
+  var messages = document.getElementById('chatMessages');
+  if (!messages) return;
+  var wrap = document.createElement('div');
+  wrap.className = 'chat-msg';
+  var name = document.createElement('span');
+  name.className = 'chat-name';
+  name.textContent = (data.name || 'Игрок') + ': ';
+  var text = document.createElement('span');
+  text.className = 'chat-text';
+  text.textContent = data.text || '';
+  wrap.appendChild(name);
+  wrap.appendChild(text);
+  messages.appendChild(wrap);
+  messages.scrollTop = messages.scrollHeight;
 }
 
 function findPlayerName(id) {

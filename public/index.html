@@ -7,6 +7,32 @@
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
+  <button id="chatToggle" class="floating chat-toggle">Чат</button>
+  <button id="helpToggle" class="floating help-toggle">?</button>
+
+  <div id="chatDrawer" class="chat-drawer">
+    <div class="chat-header">Чат</div>
+    <div id="chatMessages" class="chat-messages"></div>
+    <div class="chat-input">
+      <input id="chatInput" type="text" placeholder="Сообщение..." maxlength="160" />
+      <button id="chatSend" class="btn primary">Отправить</button>
+    </div>
+  </div>
+
+  <div id="rulesModal" class="modal">
+    <div class="modal-content">
+      <div class="modal-title">Правила</div>
+      <div class="modal-text">
+        Колода: 6 тузов, 6 королей, 6 дам и 2 джокера. Каждый получает по 5 карт.
+        В начале раунда объявляется карта стола (тузы, короли или дамы). Игроки по очереди
+        выкладывают любое количество карт, заявляя, что это карта стола. Следующий игрок
+        может оспорить ход. Если поймали ложь, лжец стреляет в себя. Если ход был честный,
+        стреляет оспоривший. В барабане 1 патрон из 6. Игра идет до последнего выжившего.
+      </div>
+      <button id="rulesClose" class="btn">Закрыть</button>
+    </div>
+  </div>
+
   <div class="page">
     <header class="hero">
       <div class="hero__title">Колода лжецов</div>
@@ -23,14 +49,24 @@
     </section>
 
     <section id="game" class="card" style="display:none;">
+      <div class="game-toolbar">
+        <button id="layoutToggle" class="btn">Вид стола</button>
+      </div>
       <div class="grid">
         <div class="panel">
           <div id="gameInfo" class="info"></div>
           <div id="actions" class="actions"></div>
           <div id="log" class="log"></div>
+          <div id="roundControls" class="round-controls">
+            <button id="nextRoundBtn" class="btn primary" disabled>Новая раздача</button>
+            <label class="auto-next">
+              <input type="checkbox" id="autoNextToggle" /> Авто через 5 сек
+            </label>
+          </div>
         </div>
         <div class="panel">
           <div id="players" class="players"></div>
+          <div id="tableLayout" class="table-layout hidden"></div>
           <div id="myHand" class="hand"></div>
         </div>
       </div>
