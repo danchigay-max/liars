@@ -182,6 +182,10 @@ body {
   animation: dealIn 0.25s ease;
 }
 
+.card-tile.throwing {
+  animation: throwToPile 0.28s ease;
+}
+
 .card-corner {
   position: absolute;
   top: 8px;
@@ -444,7 +448,7 @@ body {
 /* Table layout */
 .table-layout {
   position: relative;
-  height: 420px;
+  height: 520px;
   border: 1px dashed #2a3444;
   border-radius: 12px;
   margin-bottom: 12px;
@@ -466,12 +470,12 @@ body {
   gap: 6px;
   flex-wrap: wrap;
   justify-content: center;
-  min-height: 60px;
+  min-height: 70px;
 }
 
 .pile-card {
-  width: 42px;
-  height: 60px;
+  width: 50px;
+  height: 70px;
   border-radius: 6px;
   background: linear-gradient(135deg, #233a5e, #0e1a2b);
   border: 1px solid #38527a;
@@ -494,11 +498,15 @@ body {
   opacity: 0;
   transform: scale(0.9);
   transition: opacity 0.25s ease, transform 0.25s ease;
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%) scale(0.9);
 }
 
 .deck-preview.show {
   opacity: 1;
-  transform: scale(1);
+  transform: translate(-50%, -50%) scale(1);
 }
 
 .preview-row {
@@ -531,10 +539,10 @@ body {
   font-size: 12px;
 }
 
-.seat-top { top: 8px; left: 50%; transform: translateX(-50%); }
-.seat-right { right: 8px; top: 50%; transform: translateY(-50%); }
-.seat-bottom { bottom: 8px; left: 50%; transform: translateX(-50%); }
-.seat-left { left: 8px; top: 50%; transform: translateY(-50%); }
+.seat-top { top: 10px; left: 50%; transform: translateX(-50%); }
+.seat-right { right: 10px; top: 50%; transform: translateY(-50%); }
+.seat-bottom { bottom: 10px; left: 50%; transform: translateX(-50%); }
+.seat-left { left: 10px; top: 50%; transform: translateY(-50%); }
 
 .seat-name {
   font-weight: 700;
@@ -550,13 +558,24 @@ body {
   gap: 4px;
 }
 
+.seat-top .card-back.deal-in { animation: dealTop 0.25s ease; }
+.seat-bottom .card-back.deal-in { animation: dealBottom 0.25s ease; }
+.seat-left .card-back.deal-in { animation: dealLeft 0.25s ease; }
+.seat-right .card-back.deal-in { animation: dealRight 0.25s ease; }
+
 /* Table mode layout tweaks */
 body.table-mode .grid {
   grid-template-columns: 1fr;
 }
 
 body.table-mode .info-panel {
-  padding: 12px;
+  padding: 10px;
+}
+
+body.table-mode .info {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 6px;
 }
 
 body.table-mode .table-panel {
@@ -568,9 +587,34 @@ body.table-mode .table-panel {
   to { transform: translateY(0); opacity: 1; }
 }
 
+@keyframes dealTop {
+  from { transform: translateY(18px) scale(0.9); opacity: 0; }
+  to { transform: translateY(0) scale(1); opacity: 1; }
+}
+
+@keyframes dealBottom {
+  from { transform: translateY(-18px) scale(0.9); opacity: 0; }
+  to { transform: translateY(0) scale(1); opacity: 1; }
+}
+
+@keyframes dealLeft {
+  from { transform: translateX(18px) scale(0.9); opacity: 0; }
+  to { transform: translateX(0) scale(1); opacity: 1; }
+}
+
+@keyframes dealRight {
+  from { transform: translateX(-18px) scale(0.9); opacity: 0; }
+  to { transform: translateX(0) scale(1); opacity: 1; }
+}
+
 @keyframes pileIn {
   from { transform: translateY(10px) scale(0.9); opacity: 0; }
   to { transform: translateY(0) scale(1); opacity: 1; }
+}
+
+@keyframes throwToPile {
+  from { transform: translateY(0) scale(1); opacity: 1; }
+  to { transform: translateY(-30px) scale(0.9); opacity: 0.6; }
 }
 
 @media (max-width: 900px) {
@@ -578,5 +622,5 @@ body.table-mode .table-panel {
   .card-tile { width: 80px; height: 118px; }
   .table-title { font-size: 22px; }
   .chat-toggle { top: 20%; }
-  .table-layout { height: 300px; }
+  .table-layout { height: 320px; }
 }

@@ -17,6 +17,7 @@ var deckPreviewVisible = false;
 var deckPreviewTimer = null;
 var lastPileCount = 0;
 var autoToggleUpdating = false;
+var isThrowing = false;
 
 function logLine(text) {
   var el = document.getElementById('log');
@@ -187,7 +188,7 @@ function handleDealAnimation() {
     deckPreviewTimer = setTimeout(function() {
       deckPreviewVisible = false;
       renderPlayers([]);
-    }, 2200);
+    }, 2600);
 
     if (dealTimer) clearInterval(dealTimer);
     dealTimer = setInterval(function() {
@@ -249,6 +250,22 @@ function scheduleAutoNext() {
       }
     }, 5000);
   }
+}
+
+function animateThrow() {
+  if (isThrowing) return false;
+  var hand = document.getElementById('myHand');
+  if (!hand) return false;
+  var cards = hand.querySelectorAll('.card-tile');
+  for (var i = 0; i < selectedIndexes.length; i++) {
+    var idx = selectedIndexes[i];
+    if (cards[idx]) cards[idx].classList.add('throwing');
+  }
+  isThrowing = true;
+  setTimeout(function() {
+    isThrowing = false;
+  }, 260);
+  return true;
 }
 
 function renderGame() {
@@ -314,7 +331,7 @@ function renderGame() {
   renderHand();
 
   actions.innerHTML = '';
-  if (dealing || suspense || gameState.awaitingNextRound) {
+  if (dealing || suspense || gameState.awaitingNextRound || isThrowing) {
     actions.innerHTML = '<div class="hint">Ожидание...</div>';
   } else if (isMyTurn) {
     actions.innerHTML += '<button class="btn primary" id="playBtn">Сыграть (' + selectedIndexes.length + ')</button>';
@@ -326,8 +343,13 @@ function renderGame() {
     if (playBtn) {
       playBtn.onclick = function() {
         if (!selectedIndexes.length) return alert('Выберите карты');
-        ws.send(JSON.stringify({ type: 'playCards', data: { cardIndexes: selectedIndexes } }));
-        selectedIndexes = [];
+        animateThrow();
+        setTimeout(function() {
+          if (ws && ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({ type: 'playCards', data: { cardIndexes: selectedIndexes } }));
+          }
+          selectedIndexes = [];
+        }, 240);
       };
     }
 
@@ -375,7 +397,7 @@ function renderHand() {
     el.innerHTML = cardInner(card);
     (function(idx) {
       el.onclick = function() {
-        if (gameState.dealing || gameState.awaitingNextRound) return;
+        if (gameState.dealing || gameState.awaitingNextRound || isThrowing) return;
         var pos = selectedIndexes.indexOf(idx);
         if (pos >= 0) selectedIndexes.splice(pos, 1);
         else selectedIndexes.push(idx);
